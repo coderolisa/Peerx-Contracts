@@ -6,6 +6,7 @@ pub use portfolio::Badge;
 mod trading;
 use trading::perform_swap;
 mod referral;
+mod rewards;
 use referral::ReferralSystem;
 
 #[contract]
@@ -299,6 +300,16 @@ impl CounterContract {
         rewards
     }
 }
+
+// counter/src/lib.rs
+mod trading;
+mod portfolio;
+mod errors;
+
+pub use trading::swap_tokens;
+pub use portfolio::{get_balance, deposit, withdraw};
+pub use errors::ContractError;
+
 
 #[cfg(test)]
 mod balance_test;
