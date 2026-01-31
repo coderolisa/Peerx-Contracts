@@ -2,6 +2,14 @@
 use soroban_sdk::{contract, contractimpl, Address, Env, Symbol, Vec};
 
 // Bring in modules from parent directory
+mod events;
+mod admin;
+mod errors;
+mod storage;
+mod trading;
+
+use events::Events;
+
 mod portfolio { include!("../portfolio.rs"); }
 mod trading { include!("../trading.rs"); }
 pub mod migration;
@@ -12,6 +20,49 @@ pub use tiers::UserTier;
 pub use rate_limit::{RateLimiter, RateLimitStatus};
 use trading::perform_swap;
 
+
+use crate::admin::require_admin;
+use crate::errors::SwapTradeError;
+use crate::storage::{ADMIN_KEY, PAUSED_KEY};
+
+pub fn pause_trading(env: Env) -> Result<bool, SwapTradeError> {
+    let caller = env.invoker();
+    caller.require_auth();
+    require_admin(&env, &caller)?;
+
+    env.storage().persistent().set(&PAUSED_KEY, &true);
+    Ok(true)
+}
+
+pub fn resume_trading(env: Env) -> Result<bool, SwapTradeError> {
+    let caller = env.invoker();
+    caller.require_auth();
+    require_admin(&env, &caller)?;
+
+    env.storage().persistent().set(&PAUSED_KEY, &false);
+    Ok(true)
+}
+
+pub fn set_admin(env: Env, new_admin: Address) -> Result<(), SwapTradeError> {
+    let caller = env.invoker();
+    caller.require_auth();
+    require_admin(&env, &caller)?;
+
+    env.storage().persistent().set(&ADMIN_KEY, &new_admin);
+    Ok(())
+}
+
+// Batch imports
+use batch::{
+    BatchOperation,
+    BatchResult,
+    OperationResult,
+    execute_batch_atomic,
+    execute_batch_best_effort,
+};
+
+// Oracle imports
+use oracle::{set_stored_price, get_price_safe};
 pub const CONTRACT_VERSION: u32 = 1;
 
 #[contract]

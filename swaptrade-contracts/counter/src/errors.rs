@@ -1,3 +1,10 @@
+use soroban_sdk::contracterror;
+
+#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum SwapTradeError {
+    NotAdmin = 1,
+    TradingPaused = 2,
 // counter/src/errors.rs
 use soroban_sdk::{contracterror};
 
