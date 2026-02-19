@@ -10,7 +10,7 @@
 //! Run with `cargo test formal_verification` to execute all property tests.
 //! Run with `cargo test formal_verification -- --nocapture` to see detailed output.
 
-#[cfg(all(test, feature = "testutils"))]
+#[cfg(test)]
 mod formal_verification {
     // Note: Full proptest implementation requires access to Contract execution environment
     // These tests focus on verifiable invariants that can be checked independently

@@ -111,19 +111,10 @@ impl Portfolio {
         }
     }
 
-    /// Transfer a user's balance from one asset to another.
-    /// Fails if amount <= 0 or if the user has insufficient funds in the source asset.
-    pub fn debit(&mut self, env: &Env, token: Asset, user: Address, amount: i128) {
-        if amount == 0 { return; }
-        assert!(amount > 0, "Amount must be positive");
-        let key = (user.clone(), token.clone());
-        let current = self.balances.get(key.clone()).unwrap_or(0);
-        assert!(current >= amount, "Insufficient funds");
-        self.balances.set(key, current - amount);
-        
-        // Metrics
-        self.metrics.balances_updated = self.metrics.balances_updated.saturating_add(1);
-    }
+    // NOTE: debit() implementation with PnL tracking appears later in the file.
+    // The earlier, simpler debit() was removed to avoid duplicate definitions
+    // which cause a compile-time error. Use the single canonical `debit` below
+    // that also updates PnL and metrics.
 
     pub fn credit(&mut self, env: &Env, token: Asset, user: Address, amount: i128) {
         if amount == 0 { return; }
