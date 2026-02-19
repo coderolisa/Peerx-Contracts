@@ -2,24 +2,27 @@
 use soroban_sdk::{contract, contractimpl, Address, Env, Symbol, Vec};
 
 // Bring in modules from parent directory
-mod events;
 mod admin;
 mod errors;
+mod events;
 mod storage;
 mod trading;
 
 use events::Events;
 
-mod portfolio { include!("../portfolio.rs"); }
-mod trading { include!("../trading.rs"); }
+mod portfolio {
+    include!("../portfolio.rs");
+}
+mod trading {
+    include!("../trading.rs");
+}
 pub mod migration;
 
-use portfolio::{Portfolio, Asset, LPPosition};
+use portfolio::{Asset, LPPosition, Portfolio};
 pub use portfolio::{Badge, Metrics, Transaction};
+pub use rate_limit::{RateLimitStatus, RateLimiter};
 pub use tiers::UserTier;
-pub use rate_limit::{RateLimiter, RateLimitStatus};
 use trading::perform_swap;
-
 
 use crate::admin::require_admin;
 use crate::errors::SwapTradeError;
@@ -54,15 +57,11 @@ pub fn set_admin(env: Env, new_admin: Address) -> Result<(), SwapTradeError> {
 
 // Batch imports
 use batch::{
-    BatchOperation,
-    BatchResult,
-    OperationResult,
-    execute_batch_atomic,
-    execute_batch_best_effort,
+    execute_batch_atomic, execute_batch_best_effort, BatchOperation, BatchResult, OperationResult,
 };
 
 // Oracle imports
-use oracle::{set_stored_price, get_price_safe};
+use oracle::{get_price_safe, set_stored_price};
 pub const CONTRACT_VERSION: u32 = 1;
 
 #[contract]
@@ -70,11 +69,13 @@ pub struct CounterContract;
 
 #[contractimpl]
 impl CounterContract {
-    /// Initialize the contract version. 
+    /// Initialize the contract version.
     /// Should be called after deployment.
     pub fn initialize(env: Env) {
         if migration::get_stored_version(&env) == 0 {
-            env.storage().instance().set(&Symbol::short("v_code"), &CONTRACT_VERSION);
+            env.storage()
+                .instance()
+                .set(&Symbol::short("v_code"), &CONTRACT_VERSION);
         }
     }
 
@@ -137,7 +138,7 @@ impl CounterContract {
 
         // Get user's current tier for fee calculation and rate limiting
         let user_tier = portfolio.get_user_tier(&env, user.clone());
-        
+
         // Check rate limit before executing swap
         if let Err(_limit_status) = RateLimiter::check_swap_limit(&env, &user, &user_tier) {
             panic!("RATELIMIT");
@@ -157,13 +158,20 @@ impl CounterContract {
             } else {
                 Asset::Custom(from.clone())
             };
-            
+
             // We need to use a mutable borrow of portfolio which we already have
             portfolio.debit(&env, fee_asset, user.clone(), fee_amount);
             portfolio.collect_fee(fee_amount);
         }
 
-        let out_amount = perform_swap(&env, &mut portfolio, from.clone(), to.clone(), swap_amount, user.clone());
+        let out_amount = perform_swap(
+            &env,
+            &mut portfolio,
+            from.clone(),
+            to.clone(),
+            swap_amount,
+            user.clone(),
+        );
 
         let out_amount = perform_swap(&env, &mut portfolio, from, to, amount, user.clone());
 
@@ -174,10 +182,8 @@ impl CounterContract {
         #[cfg(feature = "logging")]
         {
             use soroban_sdk::symbol_short;
-            env.events().publish(
-                (symbol_short!("swap")),
-                (amount, out_amount),
-            );
+            env.events()
+                .publish((symbol_short!("swap")), (amount, out_amount));
         }
 
         out_amount
@@ -212,17 +218,15 @@ impl CounterContract {
             return 0;
         }
 
-    let out_amount = perform_swap(&env, &mut portfolio, from, to, amount, user.clone());
-    portfolio.record_trade(&env, user);
-    env.storage().instance().set(&(), &portfolio);
+        let out_amount = perform_swap(&env, &mut portfolio, from, to, amount, user.clone());
+        portfolio.record_trade(&env, user);
+        env.storage().instance().set(&(), &portfolio);
 
         #[cfg(feature = "logging")]
         {
             use soroban_sdk::symbol_short;
-            env.events().publish(
-                (symbol_short!("swap")),
-                (amount, out_amount),
-            );
+            env.events()
+                .publish((symbol_short!("swap")), (amount, out_amount));
         }
 
         out_amount
@@ -409,10 +413,14 @@ impl CounterContract {
 
         // Check user has sufficient balance
         let user_xlm_balance = portfolio.balance_of(&env, Asset::XLM, user.clone());
-        let user_usdc_balance = portfolio.balance_of(&env, Asset::Custom(symbol_short!("USDCSIM")), user.clone());
-        
+        let user_usdc_balance =
+            portfolio.balance_of(&env, Asset::Custom(symbol_short!("USDCSIM")), user.clone());
+
         assert!(user_xlm_balance >= xlm_amount, "Insufficient XLM balance");
-        assert!(user_usdc_balance >= usdc_amount, "Insufficient USDC balance");
+        assert!(
+            user_usdc_balance >= usdc_amount,
+            "Insufficient USDC balance"
+        );
 
         // Calculate LP tokens to mint using constant product AMM formula
         // If pool is empty, LP tokens = sqrt(xlm * usdc)
@@ -450,11 +458,12 @@ impl CounterContract {
                 0
             };
             let usdc_share = if current_usdc > 0 {
-                (usdc_amount as u128).saturating_mul(total_lp_tokens as u128) / (current_usdc as u128)
+                (usdc_amount as u128).saturating_mul(total_lp_tokens as u128)
+                    / (current_usdc as u128)
             } else {
                 0
             };
-            
+
             // Take minimum to maintain ratio
             core::cmp::min(xlm_share as i128, usdc_share as i128)
         };
@@ -463,7 +472,12 @@ impl CounterContract {
 
         // Debit assets from user (transfer to pool)
         portfolio.debit(&env, Asset::XLM, user.clone(), xlm_amount);
-        portfolio.debit(&env, Asset::Custom(symbol_short!("USDCSIM")), user.clone(), usdc_amount);
+        portfolio.debit(
+            &env,
+            Asset::Custom(symbol_short!("USDCSIM")),
+            user.clone(),
+            usdc_amount,
+        );
 
         // Update pool liquidity
         portfolio.add_pool_liquidity(xlm_amount, usdc_amount);
@@ -530,28 +544,43 @@ impl CounterContract {
         // Calculate proportional share of pool
         // xlm_amount = (lp_tokens / total_lp_tokens) * current_xlm
         // usdc_amount = (lp_tokens / total_lp_tokens) * current_usdc
-        let xlm_amount = ((lp_tokens as u128).saturating_mul(current_xlm as u128) / (total_lp_tokens as u128)) as i128;
-        let usdc_amount = ((lp_tokens as u128).saturating_mul(current_usdc as u128) / (total_lp_tokens as u128)) as i128;
+        let xlm_amount = ((lp_tokens as u128).saturating_mul(current_xlm as u128)
+            / (total_lp_tokens as u128)) as i128;
+        let usdc_amount = ((lp_tokens as u128).saturating_mul(current_usdc as u128)
+            / (total_lp_tokens as u128)) as i128;
 
-        assert!(xlm_amount > 0 && usdc_amount > 0, "Amounts must be positive");
+        assert!(
+            xlm_amount > 0 && usdc_amount > 0,
+            "Amounts must be positive"
+        );
 
         // Verify we're not removing more than deposited (with rounding tolerance)
         // Allow small rounding differences
         let max_xlm = pos.xlm_deposited;
         let max_usdc = pos.usdc_deposited;
-        
+
         // Check if removing more than deposited (with 1% tolerance for rounding)
-        if xlm_amount > max_xlm.saturating_mul(101) / 100 || usdc_amount > max_usdc.saturating_mul(101) / 100 {
+        if xlm_amount > max_xlm.saturating_mul(101) / 100
+            || usdc_amount > max_usdc.saturating_mul(101) / 100
+        {
             panic!("Cannot remove more than deposited");
         }
 
         // Update pool liquidity (subtract)
         portfolio.set_liquidity(Asset::XLM, current_xlm.saturating_sub(xlm_amount));
-        portfolio.set_liquidity(Asset::Custom(symbol_short!("USDCSIM")), current_usdc.saturating_sub(usdc_amount));
+        portfolio.set_liquidity(
+            Asset::Custom(symbol_short!("USDCSIM")),
+            current_usdc.saturating_sub(usdc_amount),
+        );
 
         // Transfer assets from pool to user
         portfolio.mint(&env, Asset::XLM, user.clone(), xlm_amount);
-        portfolio.mint(&env, Asset::Custom(symbol_short!("USDCSIM")), user.clone(), usdc_amount);
+        portfolio.mint(
+            &env,
+            Asset::Custom(symbol_short!("USDCSIM")),
+            user.clone(),
+            usdc_amount,
+        );
 
         // Update LP position
         pos.lp_tokens_minted = pos.lp_tokens_minted.saturating_sub(lp_tokens);
@@ -594,17 +623,17 @@ impl CounterContract {
 #[cfg(test)]
 mod balance_test;
 #[cfg(test)]
-mod oracle_tests;
-#[cfg(test)]
 mod batch_tests;
+#[cfg(test)]
+mod enhanced_trading_tests; // NEW: Enhanced trading tests for better coverage
+#[cfg(test)]
+mod lp_tests;
+mod migration_tests;
+#[cfg(test)]
+mod oracle_tests;
 #[cfg(test)]
 mod rate_limit_tests;
 #[cfg(test)]
 mod transaction_tests;
-#[cfg(test)]
-mod lp_tests;
-#[cfg(test)]
-mod enhanced_trading_tests;  // NEW: Enhanced trading tests for better coverage
-mod migration_tests;
 
 // trading tests are provided as integration/unit tests in the repository tests/ folder

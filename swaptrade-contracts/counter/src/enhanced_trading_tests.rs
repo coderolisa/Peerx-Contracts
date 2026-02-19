@@ -20,10 +20,10 @@ fn test_insufficient_balance_detailed_handling() {
 
     // Attempt to swap more than available balance
     let result = client.try_swap(&xlm, &usdc, &200, &user);
-    
+
     // Should return 0 for insufficient balance
     assert_eq!(result, 0);
-    
+
     // Failed orders metric should increment
     let metrics = client.get_metrics();
     assert!(metrics.failed_orders >= 1);
@@ -40,7 +40,7 @@ fn test_concurrent_order_placement_simulation() {
     let user1 = Address::generate(&env);
     let user2 = Address::generate(&env);
     let user3 = Address::generate(&env);
-    
+
     let xlm = symbol_short!("XLM");
     let usdc = symbol_short!("USDCSIM");
 
@@ -68,7 +68,7 @@ fn test_concurrent_order_placement_simulation() {
     assert_eq!(client.get_balance(&xlm, &user1), user1_xlm_before - 100);
     assert_eq!(client.get_balance(&xlm, &user2), user2_xlm_before - 200);
     assert_eq!(client.get_balance(&xlm, &user3), user3_xlm_before - 500);
-    
+
     assert_eq!(client.get_balance(&usdc, &user1), 100);
     assert_eq!(client.get_balance(&usdc, &user2), 200);
     assert_eq!(client.get_balance(&usdc, &user3), 500);
@@ -88,7 +88,7 @@ fn test_amm_precision_and_rounding_edge_cases() {
 
     // Test with very small amounts
     client.mint(&xlm, &user, &3);
-    
+
     // Test 1: Swap 1 unit (minimum)
     let out1 = client.swap(&xlm, &usdc, &1, &user);
     assert_eq!(out1, 1);
@@ -201,14 +201,16 @@ fn test_slippage_protection_enforcement() {
     let usdc = symbol_short!("USDCSIM");
 
     // Set maximum slippage to 1% (100 basis points)
-    env.storage().instance().set(&symbol_short!("MAX_SLIP"), &100u32);
+    env.storage()
+        .instance()
+        .set(&symbol_short!("MAX_SLIP"), &100u32);
 
     client.mint(&xlm, &user, &10000);
 
     // Large swap that might trigger slippage
     // This test depends on AMM implementation details
     let result = client.try_swap(&xlm, &usdc, &5000, &user);
-    
+
     // Should either succeed or fail gracefully
     if result == 0 {
         // If it failed due to slippage, verify metrics
@@ -273,10 +275,10 @@ fn test_transaction_history_tracking() {
 
     // Check transaction history
     let transactions = client.get_user_transactions(&user, &5);
-    
+
     // Should have at least 3 transactions
     assert!(transactions.len() >= 3);
-    
+
     // Verify transaction structure (basic checks)
     if let Some(first_tx) = transactions.get(0) {
         assert_eq!(first_tx.from_amount, 100);
@@ -369,7 +371,7 @@ fn test_badge_system_integration_with_trading() {
 
     let badges_after_first = client.get_user_badges(&user);
     assert_eq!(badges_after_first.len(), 1);
-    
+
     // Check if FirstTrade badge is present
     let has_first_trade = client.has_badge(&user, &Badge::FirstTrade);
     assert!(has_first_trade);

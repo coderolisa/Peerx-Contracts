@@ -1,7 +1,11 @@
 #[cfg(test)]
 mod rate_limit_tests {
     use crate::{CounterContract, RateLimiter, UserTier};
-    use soroban_sdk::{testutils::{self, Address as _, Ledger}, Address, Env, Symbol, symbol_short};
+    use soroban_sdk::{
+        symbol_short,
+        testutils::{self, Address as _, Ledger},
+        Address, Env, Symbol,
+    };
 
     fn create_test_env() -> (Env, Address) {
         let env = Env::default();
@@ -42,7 +46,11 @@ mod rate_limit_tests {
         for i in 0..20 {
             env.ledger().set_timestamp(3600 + i);
             let result = RateLimiter::check_swap_limit(&env, &user, &trader);
-            assert!(result.is_ok(), "Swap {} should be allowed for Trader", i + 1);
+            assert!(
+                result.is_ok(),
+                "Swap {} should be allowed for Trader",
+                i + 1
+            );
             RateLimiter::record_swap(&env, &user, env.ledger().timestamp());
         }
 
@@ -61,7 +69,11 @@ mod rate_limit_tests {
         for i in 0..100 {
             env.ledger().set_timestamp(3600 + i);
             let result = RateLimiter::check_swap_limit(&env, &user, &expert);
-            assert!(result.is_ok(), "Swap {} should be allowed for Expert", i + 1);
+            assert!(
+                result.is_ok(),
+                "Swap {} should be allowed for Expert",
+                i + 1
+            );
             RateLimiter::record_swap(&env, &user, env.ledger().timestamp());
         }
 
@@ -80,7 +92,11 @@ mod rate_limit_tests {
         for i in 0..200 {
             env.ledger().set_timestamp(3600 + i);
             let result = RateLimiter::check_swap_limit(&env, &user, &whale);
-            assert!(result.is_ok(), "Whale should always be allowed, swap {}", i + 1);
+            assert!(
+                result.is_ok(),
+                "Whale should always be allowed, swap {}",
+                i + 1
+            );
         }
     }
 
@@ -136,7 +152,11 @@ mod rate_limit_tests {
         for i in 0..30 {
             env.ledger().set_timestamp(86400 + i as u64);
             let result = RateLimiter::check_lp_limit(&env, &user, &trader);
-            assert!(result.is_ok(), "LP op {} should be allowed for Trader", i + 1);
+            assert!(
+                result.is_ok(),
+                "LP op {} should be allowed for Trader",
+                i + 1
+            );
             RateLimiter::record_lp_op(&env, &user, env.ledger().timestamp());
         }
 
@@ -155,7 +175,11 @@ mod rate_limit_tests {
         for i in 0..100 {
             env.ledger().set_timestamp(86400 + i as u64);
             let result = RateLimiter::check_lp_limit(&env, &user, &expert);
-            assert!(result.is_ok(), "Expert should always be allowed, LP op {}", i + 1);
+            assert!(
+                result.is_ok(),
+                "Expert should always be allowed, LP op {}",
+                i + 1
+            );
         }
     }
 
@@ -207,7 +231,10 @@ mod rate_limit_tests {
         let status = result.unwrap_err();
         let cooldown_at_2000 = status.cooldown_ms;
 
-        assert!(cooldown_at_2000 < cooldown_at_1000, "Cooldown should decrease over time");
+        assert!(
+            cooldown_at_2000 < cooldown_at_1000,
+            "Cooldown should decrease over time"
+        );
     }
 
     #[test]
@@ -264,7 +291,10 @@ mod rate_limit_tests {
 
         // LP ops should still be allowed (different time window)
         env.ledger().set_timestamp(86400);
-        assert!(RateLimiter::check_lp_limit(&env, &user, &novice).is_ok(), "LP ops should be independent");
+        assert!(
+            RateLimiter::check_lp_limit(&env, &user, &novice).is_ok(),
+            "LP ops should be independent"
+        );
 
         // Consume LP limit
         for i in 0..10 {

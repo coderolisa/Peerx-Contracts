@@ -1,10 +1,10 @@
-use soroban_sdk::{Env, Symbol};
 use crate::portfolio::Portfolio;
+use soroban_sdk::{Env, Symbol};
 
 pub fn migrate_from_v1_to_v2(env: &Env) -> Result<(), u32> {
     // 1. Check current version
     let current_version = get_stored_version(env);
-    
+
     // If already V2, return success (idempotency)
     if current_version >= 2 {
         return Ok(());
@@ -23,7 +23,7 @@ pub fn migrate_from_v1_to_v2(env: &Env) -> Result<(), u32> {
     // Update the data structure: Set migration timestamp if it wasn't set (simulating V2 feature)
     if portfolio.migration_time.is_none() {
         portfolio.migration_time = Some(env.ledger().timestamp());
-        
+
         // Save the updated portfolio
         env.storage().instance().set(&(), &portfolio);
     }
@@ -36,10 +36,15 @@ pub fn migrate_from_v1_to_v2(env: &Env) -> Result<(), u32> {
 
 /// Helper to get version from storage
 pub fn get_stored_version(env: &Env) -> u32 {
-    env.storage().instance().get(&Symbol::short("v_code")).unwrap_or(0)
+    env.storage()
+        .instance()
+        .get(&Symbol::short("v_code"))
+        .unwrap_or(0)
 }
 
 /// Helper to set version in storage
 fn set_stored_version(env: &Env, version: u32) {
-    env.storage().instance().set(&Symbol::short("v_code"), &version);
+    env.storage()
+        .instance()
+        .set(&Symbol::short("v_code"), &version);
 }
