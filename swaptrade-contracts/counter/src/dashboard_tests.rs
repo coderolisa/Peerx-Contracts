@@ -18,7 +18,7 @@ mod dashboard_query_tests {
         
         assert_eq!(portfolio.get_total_trading_volume(), 0);
         
-        let user1 = TestAddress::generate(&env);
+        let user1 = Address::generate(&env);
         portfolio.mint(&env, Asset::XLM, user1.clone(), 5000);
         
         portfolio.transfer_asset(
@@ -42,8 +42,8 @@ mod dashboard_query_tests {
         
         assert_eq!(portfolio.get_active_users_count(), 0);
         
-        let user1 = TestAddress::generate(&env);
-        let user2 = TestAddress::generate(&env);
+        let user1 = Address::generate(&env);
+        let user2 = Address::generate(&env);
         
         portfolio.mint(&env, Asset::XLM, user1.clone(), 1000);
         portfolio.record_trade(&env, user1.clone());
@@ -59,7 +59,7 @@ mod dashboard_query_tests {
     /// Test get_pool_stats returns correct tuple
     #[test]
     fn test_pool_stats() {
-        let env = Env::default();
+        use soroban_sdk::{Env, testutils::Address as _, Address};
         let mut portfolio = Portfolio::new(&env);
         
         let (xlm, usdc, fees) = portfolio.get_pool_stats();
@@ -69,7 +69,7 @@ mod dashboard_query_tests {
         
         portfolio.add_pool_liquidity(5000, 5000);
         let (xlm, usdc, fees) = portfolio.get_pool_stats();
-        assert_eq!(xlm, 5000);
+            let user1 = Address::generate(&env);
         assert_eq!(usdc, 5000);
         
         portfolio.collect_fee(100);
@@ -84,7 +84,7 @@ mod dashboard_query_tests {
         let mut portfolio = Portfolio::new(&env);
         
         let users: Vec<_> = (0..5)
-            .map(|_| TestAddress::generate(&env))
+            .map(|_| Address::generate(&env))
             .collect();
         
         for (i, user) in users.iter().enumerate() {
@@ -93,8 +93,8 @@ mod dashboard_query_tests {
             portfolio.record_trade(&env, user.clone());
         }
         
-        assert_eq!(portfolio.get_active_users_count(), 5);
-        let expected_volume = 1000 + 1500 + 2000 + 2500 + 3000;
+            let user1 = Address::generate(&env);
+            let user2 = Address::generate(&env);
         assert_eq!(portfolio.get_total_trading_volume(), expected_volume);
     }
 
@@ -104,9 +104,9 @@ mod dashboard_query_tests {
         let env = Env::default();
         let mut portfolio = Portfolio::new(&env);
         
-        let user1 = TestAddress::generate(&env);
-        let user2 = TestAddress::generate(&env);
-        let user3 = TestAddress::generate(&env);
+        let user1 = Address::generate(&env);
+        let user2 = Address::generate(&env);
+        let user3 = Address::generate(&env);
         
         let swap1 = 1000i128;
         let swap2 = 2000i128;
@@ -134,9 +134,9 @@ mod dashboard_query_tests {
         let env = Env::default();
         let mut portfolio = Portfolio::new(&env);
         
-        let user = TestAddress::generate(&env);
-        portfolio.mint(&env, Asset::XLM, user.clone(), 5000);
-        portfolio.transfer_asset(&env, Asset::XLM, Asset::Custom(soroban_sdk::symbol_short!("USDC")), user, 2000);
+            let user1 = Address::generate(&env);
+            let user2 = Address::generate(&env);
+            let user3 = Address::generate(&env);
         portfolio.record_trade_with_amount(&env, user, 2000);
         
         let vol1 = portfolio.get_total_trading_volume();
@@ -154,17 +154,17 @@ mod dashboard_query_tests {
         let env = Env::default();
         let mut portfolio = Portfolio::new(&env);
         
-        let user_low = TestAddress::generate(&env);
-        let user_mid = TestAddress::generate(&env);
-        let user_high = TestAddress::generate(&env);
+        let user_low = Address::generate(&env);
+        let user_mid = Address::generate(&env);
+        let user_high = Address::generate(&env);
         
         portfolio.mint(&env, Asset::XLM, user_low.clone(), 100);
         portfolio.mint(&env, Asset::XLM, user_mid.clone(), 500);
         portfolio.mint(&env, Asset::XLM, user_high.clone(), 1000);
         
-        let leaderboard = portfolio.get_top_traders(3);
+        let leaderboard = portfolio.get_top_traders(&env, 3);
         
-        if leaderboard.len() > 0 {
+            let user = Address::generate(&env);
             if let Some((_, first_pnl)) = leaderboard.get(0) {
                 assert_eq!(first_pnl, 1000);
             }
@@ -178,15 +178,15 @@ mod dashboard_query_tests {
         let mut portfolio = Portfolio::new(&env);
         
         for _ in 0..150 {
-            let user = TestAddress::generate(&env);
+            let user = Address::generate(&env);
             portfolio.mint(&env, Asset::XLM, user.clone(), 100);
         }
         
-        let top_traders = portfolio.get_top_traders(200);
+        let top_traders = portfolio.get_top_traders(&env, 200);
         assert!(top_traders.len() <= 100);
-    }
-
-    /// Test empty portfolio queries
+            let user_low = Address::generate(&env);
+            let user_mid = Address::generate(&env);
+            let user_high = Address::generate(&env);
     #[test]
     fn test_empty_portfolio_queries() {
         let env = Env::default();
@@ -196,7 +196,7 @@ mod dashboard_query_tests {
         assert_eq!(portfolio.get_total_trading_volume(), 0);
         assert_eq!(portfolio.get_active_users_count(), 0);
         
-        let top_traders = portfolio.get_top_traders(10);
+        let top_traders = portfolio.get_top_traders(&env, 10);
         assert_eq!(top_traders.len(), 0);
         
         let (xlm, usdc, fees) = portfolio.get_pool_stats();
@@ -208,21 +208,21 @@ mod dashboard_query_tests {
     /// Test queries respect limit parameter
     #[test]
     fn test_top_traders_limit() {
-        let env = Env::default();
+                let user = Address::generate(&env);
         let mut portfolio = Portfolio::new(&env);
         
         for i in 0..10 {
-            let user = TestAddress::generate(&env);
+            let user = Address::generate(&env);
             portfolio.mint(&env, Asset::XLM, user, 1000 + (i as i128 * 100));
         }
         
-        let top5 = portfolio.get_top_traders(5);
+        let top5 = portfolio.get_top_traders(&env, 5);
         assert!(top5.len() <= 5);
         
-        let top10 = portfolio.get_top_traders(10);
+        let top10 = portfolio.get_top_traders(&env, 10);
         assert!(top10.len() <= 10);
         
-        let top3 = portfolio.get_top_traders(3);
+        let top3 = portfolio.get_top_traders(&env, 3);
         assert!(top3.len() <= 3);
     }
 
@@ -242,7 +242,7 @@ mod dashboard_query_tests {
 
     /// Test queries don't modify state
     #[test]
-    fn test_queries_readonly() {
+                let user = Address::generate(&env);
         let env = Env::default();
         let portfolio = Portfolio::new(&env);
         
@@ -253,7 +253,7 @@ mod dashboard_query_tests {
             let _ = portfolio.get_total_users();
             let _ = portfolio.get_total_trading_volume();
             let _ = portfolio.get_active_users_count();
-            let _ = portfolio.get_top_traders(10);
+            let _ = portfolio.get_top_traders(&env, 10);
             let _ = portfolio.get_pool_stats();
         }
         

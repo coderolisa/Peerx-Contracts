@@ -37,14 +37,14 @@ fn test_referral_integration_with_swaps() {
     assert_eq!(initial_referrer_rewards, 0);
     
     // Referee1 makes a swap (referrer should earn rewards from this)
-    let _ = client.swap(&Symbol::new(&env, "XLM"), &Symbol::new(&env, "USDC-SIM"), &1000, &referee1);
+    let _ = client.swap(&Symbol::new(&env, "XLM"), &Symbol::new(&env, "USDCSIM"), &1000, &referee1);
     
     // Check that referrer earned rewards
     let referrer_rewards_after_referee1_swap = client.get_referral_rewards(&referrer);
     assert!(referrer_rewards_after_referee1_swap > 0);
     
     // Referee2 makes a swap (referrer should earn more rewards)
-    let _ = client.swap(&Symbol::new(&env, "XLM"), &Symbol::new(&env, "USDC-SIM"), &1000, &referee2);
+    let _ = client.swap(&Symbol::new(&env, "XLM"), &Symbol::new(&env, "USDCSIM"), &1000, &referee2);
     
     // Check that referrer earned more rewards
     let final_referrer_rewards = client.get_referral_rewards(&referrer);
@@ -79,7 +79,7 @@ fn test_referee_discount_expires_after_50_trades() {
 
     // Make 50 trades - referee should get discount on all
     for _ in 0..50 {
-        let _ = client.swap(&Symbol::new(&env, "XLM"), &Symbol::new(&env, "USDC-SIM"), &100, &referee);
+        let _ = client.swap(&Symbol::new(&env, "XLM"), &Symbol::new(&env, "USDCSIM"), &100, &referee);
     }
 
     // After 50 trades, referrer should have earned referral rewards
@@ -87,7 +87,7 @@ fn test_referee_discount_expires_after_50_trades() {
     assert!(referrer_rewards > 0);
 
     // Make another trade - referee should no longer get discount
-    let _ = client.swap(&Symbol::new(&env, "XLM"), &Symbol::new(&env, "USDC-SIM"), &100, &referee);
+    let _ = client.swap(&Symbol::new(&env, "XLM"), &Symbol::new(&env, "USDCSIM"), &100, &referee);
 
     // Referrer should have earned more rewards
     let final_referrer_rewards = client.get_referral_rewards(&referrer);
@@ -153,7 +153,7 @@ fn test_referral_rewards_claiming() {
     client.mint(&env, &Symbol::new(&env, "XLM"), &referee, &10000);
 
     // Make a trade to generate referral rewards
-    let _ = client.swap(&Symbol::new(&env, "XLM"), &Symbol::new(&env, "USDC-SIM"), &1000, &referee);
+    let _ = client.swap(&Symbol::new(&env, "XLM"), &Symbol::new(&env, "USDCSIM"), &1000, &referee);
 
     // Check that referrer has earned rewards
     let rewards_before_claim = client.get_referral_rewards(&referrer);

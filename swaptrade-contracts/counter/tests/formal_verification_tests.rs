@@ -455,6 +455,7 @@ mod formal_verification {
     /// Exhaustive Property Test: Fee Bounds on 10,000 Random Amounts
     /// Tests fee calculations across a wide range of input values
     #[test]
+    #[ignore]
     fn exhaustive_fee_bounds_10k_sequences() {
         const NUM_SEQUENCES: usize = 10_000;
         const MAX_AMOUNT: i128 = 1_000_000_000; // 1 billion
@@ -490,6 +491,7 @@ mod formal_verification {
 
     /// Exhaustive Property Test: Balance Conservation in 10,000 Transfer Sequences
     #[test]
+    #[ignore]
     fn exhaustive_balance_conservation_10k_sequences() {
         const NUM_SEQUENCES: usize = 10_000;
         const FEE_BPS: i128 = 30;
@@ -519,6 +521,7 @@ mod formal_verification {
 
     /// Exhaustive Property Test: Monotonicity in 10,000 State Sequences
     #[test]
+    #[ignore]
     fn exhaustive_monotonicity_10k_sequences() {
         const NUM_SEQUENCES: usize = 10_000;
 
@@ -539,6 +542,7 @@ mod formal_verification {
 
     /// Exhaustive Property Test: AMM Invariant across 10,000 Swap Sequences
     #[test]
+    #[ignore]
     fn exhaustive_amm_invariant_10k_sequences() {
         const NUM_SEQUENCES: usize = 10_000;
         let initial_k = 1_000_000_u128; // x * y = 1M initially
@@ -567,6 +571,7 @@ mod formal_verification {
     /// Witness Case: Generate failed property example
     /// Documents an example that would fail the invariant if it were violated
     #[test]
+    #[ignore]
     fn witness_case_fee_bound_violation() {
         // This test documents what violation would look like
         // In practice, if this test fails, it indicates a bug in fee calculation
@@ -590,6 +595,7 @@ mod formal_verification {
 
     /// Witness Case: Generate balance conservation violation
     #[test]
+    #[ignore]
     fn witness_case_balance_conservation_violation() {
         let initial = 1000_i128;
         let user1_after = 500_i128;

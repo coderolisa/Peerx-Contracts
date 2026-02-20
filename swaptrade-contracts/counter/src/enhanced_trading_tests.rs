@@ -2,6 +2,7 @@
 
 use super::*;
 use soroban_sdk::{symbol_short, Address, Env, Vec};
+use soroban_sdk::testutils::Address as _;
 
 /// Test 1: Insufficient Balance with Detailed Error Handling
 /// Tests that insufficient balance scenarios are properly handled
@@ -19,7 +20,7 @@ fn test_insufficient_balance_detailed_handling() {
     client.mint(&xlm, &user, &100);
 
     // Attempt to swap more than available balance
-    let result = client.try_swap(&xlm, &usdc, &200, &user);
+    let result = client.try_swap(&xlm, &usdc, &200, &user).expect("client.try_swap failed").expect("try_swap returned error");
 
     // Should return 0 for insufficient balance
     assert_eq!(result, 0);
@@ -150,11 +151,11 @@ fn test_invalid_token_pair_handling() {
     let invalid_token = symbol_short!("INVALID");
 
     // Test with unsupported token
-    let result1 = client.try_swap(&xlm, &invalid_token, &100, &user);
+    let result1 = client.try_swap(&xlm, &invalid_token, &100, &user).expect("client.try_swap failed").expect("try_swap returned error");
     assert_eq!(result1, 0);
 
     // Test with same token (should fail)
-    let result2 = client.try_swap(&xlm, &xlm, &100, &user);
+    let result2 = client.try_swap(&xlm, &xlm, &100, &user).expect("client.try_swap failed").expect("try_swap returned error");
     assert_eq!(result2, 0);
 
     // Verify failed orders are counted
@@ -175,12 +176,12 @@ fn test_zero_and_negative_amount_edge_cases() {
     let usdc = symbol_short!("USDCSIM");
 
     // Test zero amount (should fail gracefully)
-    let result1 = client.try_swap(&xlm, &usdc, &0, &user);
+    let result1 = client.try_swap(&xlm, &usdc, &0, &user).expect("client.try_swap failed").expect("try_swap returned error");
     assert_eq!(result1, 0);
 
     // Test negative amount (should fail gracefully)
     // Note: i128 can be negative, but our contract should handle it
-    let result2 = client.try_swap(&xlm, &usdc, &-50, &user);
+    let result2 = client.try_swap(&xlm, &usdc, &-50, &user).expect("client.try_swap failed").expect("try_swap returned error");
     assert_eq!(result2, 0);
 
     // Verify failed orders counter
@@ -209,7 +210,7 @@ fn test_slippage_protection_enforcement() {
 
     // Large swap that might trigger slippage
     // This test depends on AMM implementation details
-    let result = client.try_swap(&xlm, &usdc, &5000, &user);
+    let result = client.try_swap(&xlm, &usdc, &5000, &user).expect("client.try_swap failed").expect("try_swap returned error");
 
     // Should either succeed or fail gracefully
     if result == 0 {
@@ -241,7 +242,7 @@ fn test_rate_limiting_integration_with_trading() {
     let mut failure_count = 0;
 
     for i in 0..10 {
-        let result = client.try_swap(&xlm, &usdc, &(100 + i), &user);
+        let result = client.try_swap(&xlm, &usdc, &(100 + i), &user).expect("client.try_swap failed").expect("try_swap returned error");
         if result > 0 {
             success_count += 1;
         } else {

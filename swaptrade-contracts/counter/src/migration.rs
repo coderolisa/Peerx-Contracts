@@ -1,7 +1,8 @@
 use crate::portfolio::Portfolio;
+use crate::errors::SwapTradeError;
 use soroban_sdk::{Env, Symbol};
 
-pub fn migrate_from_v1_to_v2(env: &Env) -> Result<(), u32> {
+pub fn migrate_from_v1_to_v2(env: &Env) -> Result<(), SwapTradeError> {
     // 1. Check current version
     let current_version = get_stored_version(env);
 

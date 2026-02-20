@@ -1,5 +1,5 @@
 extern crate alloc;
-use soroban_sdk::{contracttype, Address, Env, Symbol, Vec};
+use soroban_sdk::{contracttype, Address, Env, Symbol, Vec, symbol_short};
 
 use crate::portfolio::{Portfolio, Asset};
 use crate::trading::perform_swap;
@@ -124,17 +124,17 @@ fn validate_operation(env: &Env, operation: &BatchOperation) -> Result<(), Symbo
 
 /// Helper function to check if a token symbol is valid
 fn is_valid_token(token: &Symbol) -> bool {
-    let s = token.to_string();
-    matches!(s.as_str(), "XLM" | "USDC-SIM")
+    *token == symbol_short!("XLM") || *token == symbol_short!("USDCSIM")
 }
 
 /// Converts Symbol to Asset
 fn symbol_to_asset(sym: &Symbol) -> Asset {
-    let s = sym.to_string();
-    match s.as_str() {
-        "XLM" => Asset::XLM,
-        "USDC-SIM" => Asset::Custom(sym.clone()),
-        _ => Asset::Custom(sym.clone()), // Fallback for custom tokens
+    if *sym == symbol_short!("XLM") {
+        Asset::XLM
+    } else if *sym == symbol_short!("USDCSIM") {
+        Asset::Custom(sym.clone())
+    } else {
+        Asset::Custom(sym.clone())
     }
 }
 
@@ -234,7 +234,7 @@ fn execute_single_operation(
             let xlm_balance = portfolio.balance_of(env, Asset::XLM, user.clone());
             let usdc_balance = portfolio.balance_of(
                 env, 
-                Asset::Custom(Symbol::new(env, "USDC-SIM")), 
+                Asset::Custom(Symbol::new(env, "USDCSIM")), 
                 user.clone()
             );
             
@@ -248,7 +248,7 @@ fn execute_single_operation(
             
             // Deduct from user's balance
             let xlm_key = (user.clone(), Asset::XLM);
-            let usdc_key = (user.clone(), Asset::Custom(Symbol::new(env, "USDC-SIM")));
+            let usdc_key = (user.clone(), Asset::Custom(Symbol::new(env, "USDCSIM")));
             
             Ok(*xlm_amount + *usdc_amount) // Return total liquidity added
         }
@@ -260,7 +260,7 @@ fn execute_single_operation(
             portfolio.mint(env, Asset::XLM, user.clone(), *xlm_amount);
             portfolio.mint(
                 env, 
-                Asset::Custom(Symbol::new(env, "USDC-SIM")), 
+                Asset::Custom(Symbol::new(env, "USDCSIM")), 
                 user.clone(), 
                 *usdc_amount
             );
@@ -290,7 +290,7 @@ mod tests {
         for _ in 0..11 {
             operations.push_back(BatchOperation::Swap(
                 Symbol::new(&env, "XLM"),
-                Symbol::new(&env, "USDC-SIM"),
+                Symbol::new(&env, "USDCSIM"),
                 100,
                 user.clone(),
             ));
@@ -319,7 +319,7 @@ mod tests {
         let mut operations = Vec::new(&env);
         operations.push_back(BatchOperation::Swap(
             Symbol::new(&env, "XLM"),
-            Symbol::new(&env, "USDC-SIM"),
+            Symbol::new(&env, "USDCSIM"),
             -100, // Invalid negative amount
             user.clone(),
         ));
