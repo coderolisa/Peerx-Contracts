@@ -46,16 +46,9 @@ impl Events {
         );
     }
 
-    pub fn badge_awarded(
-        env: &Env,
-        user: Address,
-        badge: crate::portfolio::Badge,
-        timestamp: i64,
-    ) {
-        env.events().publish(
-            (Symbol::new(env, "BadgeAwarded"), user),
-            (badge, timestamp),
-        );
+    pub fn badge_awarded(env: &Env, user: Address, badge: crate::portfolio::Badge, timestamp: i64) {
+        env.events()
+            .publish((Symbol::new(env, "BadgeAwarded"), user), (badge, timestamp));
     }
 
     pub fn user_tier_changed(
@@ -72,16 +65,12 @@ impl Events {
     }
 
     pub fn admin_paused(env: &Env, admin: Address, timestamp: i64) {
-        env.events().publish(
-            (Symbol::new(env, "AdminPaused"), admin),
-            (timestamp,),
-        );
+        env.events()
+            .publish((Symbol::new(env, "AdminPaused"), admin), (timestamp,));
     }
 
     pub fn admin_resumed(env: &Env, admin: Address, timestamp: i64) {
-        env.events().publish(
-            (Symbol::new(env, "AdminResumed"), admin),
-            (timestamp,),
-        );
+        env.events()
+            .publish((Symbol::new(env, "AdminResumed"), admin), (timestamp,));
     }
 }

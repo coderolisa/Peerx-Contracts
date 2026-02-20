@@ -1,6 +1,6 @@
 use super::*;
-use soroban_sdk::{symbol_short, testutils::Address as _, Address, Env, Symbol, Vec};
 use crate::portfolio::{Asset, LPPosition};
+use soroban_sdk::{symbol_short, testutils::Address as _, Address, Env, Symbol, Vec};
 
 #[test]
 fn test_add_liquidity_first_provider() {
@@ -18,7 +18,10 @@ fn test_add_liquidity_first_provider() {
 
     // First provider should get LP tokens = sqrt(100 * 100) = 100
     assert!(lp_tokens > 0, "LP tokens should be minted");
-    assert!(lp_tokens >= 99 && lp_tokens <= 101, "LP tokens should be approximately 100");
+    assert!(
+        lp_tokens >= 99 && lp_tokens <= 101,
+        "LP tokens should be approximately 100"
+    );
 
     // Check LP position
     let positions = client.get_lp_positions(&user);
@@ -60,7 +63,10 @@ fn test_add_liquidity_second_provider() {
 
     // Second provider should get approximately half the LP tokens
     // Since they're adding half the liquidity proportionally
-    assert!(lp_tokens2 <= lp_tokens1, "Second provider should get fewer or equal LP tokens");
+    assert!(
+        lp_tokens2 <= lp_tokens1,
+        "Second provider should get fewer or equal LP tokens"
+    );
 
     // Check positions
     let pos1 = client.get_lp_positions(&user1);
@@ -102,8 +108,14 @@ fn test_remove_liquidity() {
     let result = client.remove_liquidity(&lp_tokens, &user);
 
     // User should get back approximately what they deposited (allowing for rounding)
-    assert!(result.0 >= 99 && result.0 <= 101, "Should return approximately 100 XLM");
-    assert!(result.1 >= 99 && result.1 <= 101, "Should return approximately 100 USDC");
+    assert!(
+        result.0 >= 99 && result.0 <= 101,
+        "Should return approximately 100 XLM"
+    );
+    assert!(
+        result.1 >= 99 && result.1 <= 101,
+        "Should return approximately 100 USDC"
+    );
 
     // Check final balances
     let final_xlm = client.balance_of(&symbol_short!("XLM"), &user);
@@ -111,7 +123,10 @@ fn test_remove_liquidity() {
 
     // User should have their tokens back
     assert!(final_xlm >= initial_xlm + 99, "User should have XLM back");
-    assert!(final_usdc >= initial_usdc + 99, "User should have USDC back");
+    assert!(
+        final_usdc >= initial_usdc + 99,
+        "User should have USDC back"
+    );
 }
 
 #[test]
@@ -158,10 +173,18 @@ fn test_swap_uses_lp_pool() {
 
     // Trader mints tokens and swaps
     client.mint(&symbol_short!("XLM"), &trader, &1000);
-    client.set_price(&(symbol_short!("XLM"), symbol_short!("USDCSIM")), &1_000_000_000_000_000_000);
+    client.set_price(
+        &(symbol_short!("XLM"), symbol_short!("USDCSIM")),
+        &1_000_000_000_000_000_000,
+    );
 
     // Swap 10 XLM for USDC
-    let out = client.swap(&symbol_short!("XLM"), &symbol_short!("USDCSIM"), &10, &trader);
+    let out = client.swap(
+        &symbol_short!("XLM"),
+        &symbol_short!("USDCSIM"),
+        &10,
+        &trader,
+    );
 
     // Should get some USDC back (less than 10 due to fees and AMM formula)
     assert!(out > 0, "Should receive USDC");
@@ -187,11 +210,19 @@ fn test_lp_fee_collection() {
 
     // Trader swaps multiple times
     client.mint(&symbol_short!("XLM"), &trader, &1000);
-    client.set_price(&(symbol_short!("XLM"), symbol_short!("USDCSIM")), &1_000_000_000_000_000_000);
+    client.set_price(
+        &(symbol_short!("XLM"), symbol_short!("USDCSIM")),
+        &1_000_000_000_000_000_000,
+    );
 
     // Perform 10 swaps
     for _ in 0..10 {
-        client.swap(&symbol_short!("XLM"), &symbol_short!("USDCSIM"), &10, &trader);
+        client.swap(
+            &symbol_short!("XLM"),
+            &symbol_short!("USDCSIM"),
+            &10,
+            &trader,
+        );
     }
 
     // Fees should be accumulated (0.3% of each swap)
@@ -206,9 +237,7 @@ fn test_multiple_lps_and_traders() {
     let client = CounterContractClient::new(&env, &contract_id);
 
     // Create 5 LPs
-    let lps: Vec<Address> = (0..5)
-        .map(|_| Address::generate(&env))
-        .collect();
+    let lps: Vec<Address> = (0..5).map(|_| Address::generate(&env)).collect();
 
     // Each LP adds liquidity
     for lp in lps.iter() {
@@ -218,19 +247,25 @@ fn test_multiple_lps_and_traders() {
     }
 
     // Create 10 traders
-    let traders: Vec<Address> = (0..10)
-        .map(|_| Address::generate(&env))
-        .collect();
+    let traders: Vec<Address> = (0..10).map(|_| Address::generate(&env)).collect();
 
     // Each trader mints and performs swaps
-    client.set_price(&(symbol_short!("XLM"), symbol_short!("USDCSIM")), &1_000_000_000_000_000_000);
-    
+    client.set_price(
+        &(symbol_short!("XLM"), symbol_short!("USDCSIM")),
+        &1_000_000_000_000_000_000,
+    );
+
     for trader in traders.iter() {
         client.mint(&symbol_short!("XLM"), trader, &1000);
-        
+
         // Perform 5 swaps each
         for _ in 0..5 {
-            client.swap(&symbol_short!("XLM"), &symbol_short!("USDCSIM"), &10, trader);
+            client.swap(
+                &symbol_short!("XLM"),
+                &symbol_short!("USDCSIM"),
+                &10,
+                trader,
+            );
         }
     }
 
@@ -261,8 +296,14 @@ fn test_remove_partial_liquidity() {
     let result = client.remove_liquidity(&half_tokens, &user);
 
     // Should return approximately half
-    assert!(result.0 >= 49 && result.0 <= 51, "Should return approximately 50 XLM");
-    assert!(result.1 >= 49 && result.1 <= 51, "Should return approximately 50 USDC");
+    assert!(
+        result.0 >= 49 && result.0 <= 51,
+        "Should return approximately 50 XLM"
+    );
+    assert!(
+        result.1 >= 49 && result.1 <= 51,
+        "Should return approximately 50 USDC"
+    );
 
     // Check position is updated
     let positions = client.get_lp_positions(&user);
@@ -280,7 +321,11 @@ fn test_get_lp_positions_empty() {
 
     // User with no LP position
     let positions = client.get_lp_positions(&user);
-    assert_eq!(positions.len(), 0, "Should return empty vec for user with no position");
+    assert_eq!(
+        positions.len(),
+        0,
+        "Should return empty vec for user with no position"
+    );
 }
 
 #[test]
@@ -302,6 +347,12 @@ fn test_lp_share_calculations() {
     let lp_tokens2 = client.add_liquidity(&200, &200, &user2);
 
     // User2 should have approximately double the LP tokens
-    assert!(lp_tokens2 >= lp_tokens1 * 2 - 2, "User2 should have approximately double LP tokens");
-    assert!(lp_tokens2 <= lp_tokens1 * 2 + 2, "User2 should have approximately double LP tokens");
+    assert!(
+        lp_tokens2 >= lp_tokens1 * 2 - 2,
+        "User2 should have approximately double LP tokens"
+    );
+    assert!(
+        lp_tokens2 <= lp_tokens1 * 2 + 2,
+        "User2 should have approximately double LP tokens"
+    );
 }

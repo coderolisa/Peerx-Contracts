@@ -51,12 +51,12 @@ fn test_try_swap_handles_invalid_inputs_and_counts_failed() {
     let xlm = symbol_short!("XLM");
 
     // invalid pair (same token) -> returns 0
-    let out = client.safe_swap(&xlm, &xlm, &100, &user);
+    let out = client.try_swap(&xlm, &xlm, &100, &user).expect("client.try_swap failed").expect("try_swap returned error");
     assert_eq!(out, 0);
 
     // negative amount -> returns 0
     let usdc = symbol_short!("USDCSIM");
-    let out2 = client.safe_swap(&xlm, &usdc, &-10, &user);
+    let out2 = client.try_swap(&xlm, &usdc, &-10, &user).expect("client.try_swap failed").expect("try_swap returned error");
     assert_eq!(out2, 0);
 
     // metrics reflect failed orders

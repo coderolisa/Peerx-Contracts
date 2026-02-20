@@ -4,7 +4,7 @@
 #[cfg(test)]
 mod badge_achievement_tests {
     use crate::portfolio::{Portfolio, Asset, Badge};
-    use soroban_sdk::{Env, testutils::Address as TestAddress, Symbol};
+    use soroban_sdk::{Env, testutils::Address as _, Address, Symbol};
 
     // ===== INDIVIDUAL BADGE UNLOCK TESTS =====
 
@@ -13,7 +13,7 @@ mod badge_achievement_tests {
     fn test_first_trade_badge_at_one_trade() {
         let env = Env::default();
         let mut portfolio = Portfolio::new(&env);
-        let user = TestAddress::generate(&env);
+        let user = Address::generate(&env);
         
         // No badges initially
         assert!(!portfolio.has_badge(&env, user.clone(), Badge::FirstTrade));
@@ -30,14 +30,14 @@ mod badge_achievement_tests {
     fn test_trader_badge_at_ten_trades() {
         let env = Env::default();
         let mut portfolio = Portfolio::new(&env);
-        let user = TestAddress::generate(&env);
+        let user = Address::generate(&env);
         
         // Mint starting balance for tracking
         portfolio.mint(&env, Asset::XLM, user.clone(), 1000);
         portfolio.record_initial_balance(user.clone(), 1000);
         
         // Record 9 trades - no Trader badge yet
-        for _ in 0..9 {
+        let user = Address::generate(&env);
             portfolio.record_trade(&env, user.clone());
         }
         portfolio.check_and_award_badges(&env, user.clone());
@@ -56,7 +56,7 @@ mod badge_achievement_tests {
     fn test_wealth_builder_badge_at_10x_balance() {
         let env = Env::default();
         let mut portfolio = Portfolio::new(&env);
-        let user = TestAddress::generate(&env);
+        let user = Address::generate(&env);
         
         let starting_balance = 100i128;
         portfolio.record_initial_balance(user.clone(), starting_balance);
@@ -67,7 +67,7 @@ mod badge_achievement_tests {
         assert!(!portfolio.has_badge(&env, user.clone(), Badge::WealthBuilder));
         
         // Add more tokens to reach 10x
-        portfolio.mint(&env, Asset::XLM, user.clone(), starting_balance * 9);
+        let user = Address::generate(&env);
         portfolio.check_and_award_badges(&env, user.clone());
         
         // WealthBuilder badge should be awarded
@@ -79,7 +79,7 @@ mod badge_achievement_tests {
     fn test_liquidity_provider_badge_at_one_deposit() {
         let env = Env::default();
         let mut portfolio = Portfolio::new(&env);
-        let user = TestAddress::generate(&env);
+        let user = Address::generate(&env);
         
         // No LP badge initially
         assert!(!portfolio.has_badge(&env, user.clone(), Badge::LiquidityProvider));
@@ -97,7 +97,7 @@ mod badge_achievement_tests {
     fn test_diversifier_badge_at_five_pairs() {
         let env = Env::default();
         let mut portfolio = Portfolio::new(&env);
-        let user = TestAddress::generate(&env);
+        let user = Address::generate(&env);
         
         // Mint initial tokens
         portfolio.mint(&env, Asset::XLM, user.clone(), 5000);
@@ -135,10 +135,10 @@ mod badge_achievement_tests {
     fn test_consistency_badge_at_seven_heights() {
         let env = Env::default();
         let mut portfolio = Portfolio::new(&env);
-        let user = TestAddress::generate(&env);
+        let user = Address::generate(&env);
         
         // Mint initial tokens
-        portfolio.mint(&env, Asset::XLM, user.clone(), 5000);
+        let user = Address::generate(&env);
         
         let xlm = soroban_sdk::symbol_short!("XLM");
         let usdc = soroban_sdk::symbol_short!("USD");
@@ -165,13 +165,13 @@ mod badge_achievement_tests {
     fn test_badge_progress_tracking() {
         let env = Env::default();
         let mut portfolio = Portfolio::new(&env);
-        let user = TestAddress::generate(&env);
+        let user = Address::generate(&env);
         
         portfolio.mint(&env, Asset::XLM, user.clone(), 1000);
         portfolio.record_initial_balance(user.clone(), 1000);
         
         // Record 3 trades
-        for _ in 0..3 {
+        let user = Address::generate(&env);
             portfolio.record_trade(&env, user.clone());
         }
         
@@ -195,7 +195,7 @@ mod badge_achievement_tests {
     fn test_all_badge_progress_returned() {
         let env = Env::default();
         let mut portfolio = Portfolio::new(&env);
-        let user = TestAddress::generate(&env);
+        let user = Address::generate(&env);
         
         let progress = portfolio.get_badge_progress(&env, user.clone());
         
@@ -208,7 +208,7 @@ mod badge_achievement_tests {
         let mut has_wealth_builder = false;
         let mut has_liquidity_provider = false;
         let mut has_diversifier = false;
-        let mut has_consistency = false;
+        let user = Address::generate(&env);
         
         for (badge, _, _) in progress.iter() {
             match badge {
@@ -236,8 +236,8 @@ mod badge_achievement_tests {
     fn test_badge_conditions_independent() {
         let env = Env::default();
         let mut portfolio = Portfolio::new(&env);
-        let user = TestAddress::generate(&env);
-        
+        let user = Address::generate(&env);
+        let user = Address::generate(&env);
         portfolio.mint(&env, Asset::XLM, user.clone(), 1000);
         portfolio.record_initial_balance(user.clone(), 1000);
         
@@ -269,7 +269,7 @@ mod badge_achievement_tests {
     fn test_10_trades_progression_earning_multiple_badges() {
         let env = Env::default();
         let mut portfolio = Portfolio::new(&env);
-        let user = TestAddress::generate(&env);
+        let user = Address::generate(&env);
         
         portfolio.mint(&env, Asset::XLM, user.clone(), 1000);
         portfolio.record_initial_balance(user.clone(), 1000);
@@ -306,7 +306,7 @@ mod badge_achievement_tests {
     fn test_no_duplicate_badges() {
         let env = Env::default();
         let mut portfolio = Portfolio::new(&env);
-        let user = TestAddress::generate(&env);
+        let user = Address::generate(&env);
         
         portfolio.mint(&env, Asset::XLM, user.clone(), 1000);
         portfolio.record_initial_balance(user.clone(), 1000);
@@ -335,7 +335,7 @@ mod badge_achievement_tests {
     fn test_complex_progression_multiple_badge_types() {
         let env = Env::default();
         let mut portfolio = Portfolio::new(&env);
-        let user = TestAddress::generate(&env);
+        let user = Address::generate(&env);
         
         let starting = 100i128;
         portfolio.mint(&env, Asset::XLM, user.clone(), starting);
@@ -400,7 +400,7 @@ mod badge_achievement_tests {
     fn test_badge_persistence_across_checks() {
         let env = Env::default();
         let mut portfolio = Portfolio::new(&env);
-        let user = TestAddress::generate(&env);
+        let user = Address::generate(&env);
         
         portfolio.mint(&env, Asset::XLM, user.clone(), 1000);
         portfolio.record_initial_balance(user.clone(), 1000);
@@ -423,8 +423,8 @@ mod badge_achievement_tests {
         let env = Env::default();
         let mut portfolio = Portfolio::new(&env);
         
-        let user1 = TestAddress::generate(&env);
-        let user2 = TestAddress::generate(&env);
+        let user1 = Address::generate(&env);
+        let user2 = Address::generate(&env);
         
         // User1 gets FirstTrade badge
         portfolio.record_trade(&env, user1.clone());
