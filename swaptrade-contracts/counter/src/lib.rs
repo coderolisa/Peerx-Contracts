@@ -7,6 +7,7 @@ mod errors;
 mod events;
 mod storage;
 mod rate_limit;
+mod invariants;
 mod batch {
     include!("../batch.rs");
 }
@@ -14,8 +15,6 @@ mod tiers {
     include!("../tiers.rs");
 }
 mod oracle;
-
-use events::Events;
 
 mod portfolio {
     include!("../portfolio.rs");
@@ -25,13 +24,15 @@ mod trading {
 }
 pub mod migration;
 
+// Re-export invariant functions for external use
+pub use invariants::verify_contract_invariants;
+
 use portfolio::{Asset, LPPosition, Portfolio};
 pub use portfolio::{Badge, Metrics, Transaction};
 pub use rate_limit::{RateLimitStatus, RateLimiter};
 pub use tiers::UserTier;
 use trading::perform_swap;
 
-use crate::admin::require_admin;
 use crate::errors::SwapTradeError;
 use crate::storage::{ADMIN_KEY, PAUSED_KEY};
 
@@ -56,11 +57,11 @@ pub fn set_admin(env: Env, new_admin: Address) -> Result<(), SwapTradeError> {
 
 // Batch imports
 use batch::{
-    execute_batch_atomic, execute_batch_best_effort, BatchOperation, BatchResult, OperationResult,
+    execute_batch_atomic, execute_batch_best_effort, BatchOperation, BatchResult,
 };
 
 // Oracle imports
-use oracle::{get_price_safe, set_stored_price};
+use oracle::get_price_safe;
 pub const CONTRACT_VERSION: u32 = 1;
 
 #[contract]
@@ -172,9 +173,7 @@ impl CounterContract {
             user.clone(),
         );
 
-        let out_amount = perform_swap(&env, &mut portfolio, from, to, amount, user.clone());
-
-        portfolio.record_trade(&env, user);
+        portfolio.record_trade(&env, user.clone());
         env.storage().instance().set(&(), &portfolio);
 
         // Optional structured logging for successful swap
@@ -210,7 +209,7 @@ impl CounterContract {
             {
                 use soroban_sdk::symbol_short;
                 env.events().publish(
-                    (symbol_short!("swap_failed"), user.clone()),
+                    (symbol_short!("fail"), user.clone()),
                     (from, to, amount),
                 );
             }
@@ -634,5 +633,7 @@ mod oracle_tests;
 mod rate_limit_tests;
 #[cfg(test)]
 mod transaction_tests;
+#[cfg(test)]
+mod fuzz_tests; // NEW: Fuzz tests for security hardening
 
 // trading tests are provided as integration/unit tests in the repository tests/ folder
