@@ -1,4 +1,4 @@
-use soroban_sdk::{contracttype, Address, Env, Map, symbol_short};
+use soroban_sdk::{contracttype, Address, Env, symbol_short};
 use crate::tiers::UserTier;
 
 /// Rate limit configuration per tier

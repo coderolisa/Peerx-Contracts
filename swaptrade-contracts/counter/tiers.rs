@@ -1,4 +1,4 @@
-use soroban_sdk::{contracttype, Address, Env};
+use soroban_sdk::contracttype;
 // use crate::tiers::UserTier;
 
 #[derive(Clone, PartialEq, Debug)]
