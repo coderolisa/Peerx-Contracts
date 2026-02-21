@@ -15,6 +15,8 @@ mod tiers {
     include!("../tiers.rs");
 }
 mod oracle;
+mod batch_performance_tests;
+mod batch_opt_simple_test;
 
 mod portfolio {
     include!("../portfolio.rs");
