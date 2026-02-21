@@ -3,7 +3,7 @@ use soroban_sdk::{contracttype, Address, Env, Symbol, Map, Vec, symbol_short};
 #[cfg(test)]
 use soroban_sdk::testutils::Address as _;
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, Debug)]
 #[contracttype]
 pub enum Asset {
     XLM,
@@ -686,6 +686,40 @@ impl Portfolio {
         Vec::new(env)
     }
 
+    // ===== BATCH OPERATION OPTIMIZATION HELPERS =====
+    
+    /// Set balance directly (for journal rollback)
+    pub fn set_balance_for_rollback(&mut self, user: Address, asset: Asset, amount: i128) {
+        let key = (user, asset);
+        self.balances.set(key, amount);
+        self.metrics.balances_updated = self.metrics.balances_updated.saturating_add(1);
+    }
+    
+    /// Get trade count for a user (for journal rollback)
+    pub fn get_trade_count_for_user(&self, user: Address) -> u32 {
+        self.trades.get(user).unwrap_or(0)
+    }
+    
+    /// Set trade count for a user (for journal rollback)
+    pub fn set_trade_count_for_user(&mut self, user: Address, count: u32) {
+        self.trades.set(user, count);
+    }
+    
+    /// Get LP deposit count for a user (for journal rollback)
+    pub fn get_lp_deposit_count(&self, user: Address) -> u32 {
+        self.lp_deposits_count.get(user).unwrap_or(0)
+    }
+    
+    /// Set LP deposit count for a user (for journal rollback)
+    pub fn set_lp_deposit_count(&mut self, user: Address, count: u32) {
+        self.lp_deposits_count.set(user, count);
+    }
+    
+    /// Add to fee collection (for journal rollback)
+    pub fn add_fee_collection(&mut self, amount: i128) {
+        self.total_fees_collected = self.total_fees_collected.saturating_add(amount);
+    }
+    
     // ===== FORMAL VERIFICATION INVARIANT PREDICATES =====
     
     /// INVARIANT: Asset Conservation - Total tracked supply equals sum of all balances
