@@ -3,7 +3,9 @@
 //! This module contains benchmarks to verify the performance improvements
 //! from the batch operation optimizations.
 
-use soroban_sdk::{testutils::Address as TestAddress, Address, Env, Symbol, Vec, symbol_short};
+#[cfg(test)]
+use soroban_sdk::testutils::Address as TestAddress;
+use soroban_sdk::{Address, Env, Symbol, Vec, symbol_short};
 
 use crate::batch::{execute_batch_atomic, BatchOperation, BatchResult};
 use crate::portfolio::Portfolio;

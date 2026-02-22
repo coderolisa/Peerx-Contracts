@@ -174,3 +174,34 @@ pub fn perform_swap(
 
     out_amount
 }
+
+/// Execute a multi-hop swap through multiple pools
+/// Returns the final output amount
+pub fn execute_multihop_swap(
+    env: &Env,
+    route: &crate::liquidity_pool::Route,
+    amount_in: i128,
+) -> i128 {
+    use crate::storage::POOL_REGISTRY_KEY;
+    use crate::liquidity_pool::PoolRegistry;
+    
+    let mut registry: PoolRegistry = env
+        .storage()
+        .instance()
+        .get(&POOL_REGISTRY_KEY)
+        .unwrap_or_else(|| PoolRegistry::new(env));
+    
+    let mut current_amount = amount_in;
+    
+    for i in 0..route.pools.len() {
+        let pool_id = route.pools.get(i).unwrap();
+        let token_in = route.tokens.get(i).unwrap();
+        
+        current_amount = registry
+            .swap(env, pool_id, token_in, current_amount, 0)
+            .unwrap();
+    }
+    
+    env.storage().instance().set(&POOL_REGISTRY_KEY, &registry);
+    current_amount
+}
