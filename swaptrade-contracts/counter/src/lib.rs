@@ -1,23 +1,23 @@
 #![cfg_attr(not(test), no_std)]
-use soroban_sdk::{contract, contractimpl, Address, Env, Symbol, Vec, symbol_short};
+use soroban_sdk::{contract, contractimpl, symbol_short, Address, Env, Symbol, Vec};
 
 // Bring in modules from parent directory
 mod admin;
 mod errors;
 mod events;
-mod storage;
-mod rate_limit;
 mod invariants;
+mod rate_limit;
+mod storage;
 mod batch {
     include!("../batch.rs");
 }
 mod tiers {
     include!("../tiers.rs");
 }
-mod oracle;
-mod batch_performance_tests;
-mod batch_opt_simple_test;
 mod batch_event_tests;
+mod batch_opt_simple_test;
+mod batch_performance_tests;
+mod oracle;
 
 mod portfolio {
     include!("../portfolio.rs");
@@ -59,9 +59,7 @@ pub fn set_admin(env: Env, new_admin: Address) -> Result<(), SwapTradeError> {
 }
 
 // Batch imports
-use batch::{
-    execute_batch_atomic, execute_batch_best_effort, BatchOperation, BatchResult,
-};
+use batch::{execute_batch_atomic, execute_batch_best_effort, BatchOperation, BatchResult};
 
 // Oracle imports
 use oracle::get_price_safe;
@@ -214,10 +212,8 @@ impl CounterContract {
             #[cfg(feature = "logging")]
             {
                 use soroban_sdk::symbol_short;
-                env.events().publish(
-                    (symbol_short!("fail"), user.clone()),
-                    (from, to, amount),
-                );
+                env.events()
+                    .publish((symbol_short!("fail"), user.clone()), (from, to, amount));
             }
             return 0;
         }
@@ -639,6 +635,8 @@ mod batch_tests;
 #[cfg(test)]
 mod enhanced_trading_tests; // NEW: Enhanced trading tests for better coverage
 #[cfg(test)]
+mod fuzz_tests;
+#[cfg(test)]
 mod lp_tests;
 mod migration_tests;
 #[cfg(test)]
@@ -646,8 +644,6 @@ mod oracle_tests;
 #[cfg(test)]
 mod rate_limit_tests;
 #[cfg(test)]
-mod transaction_tests;
-#[cfg(test)]
-mod fuzz_tests; // NEW: Fuzz tests for security hardening
+mod transaction_tests; // NEW: Fuzz tests for security hardening
 
 // trading tests are provided as integration/unit tests in the repository tests/ folder
