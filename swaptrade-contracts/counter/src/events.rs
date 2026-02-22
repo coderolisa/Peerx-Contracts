@@ -73,4 +73,50 @@ impl Events {
         env.events()
             .publish((Symbol::new(env, "AdminResumed"), admin), (timestamp,));
     }
+
+impl Events {
+    /// Emitted whenever an alert fires. Carries enough metadata for an
+    /// off-chain indexer to route a push notification or webhook call.
+    ///
+    /// Topic  : ("AlertTriggered", owner_address, alert_id)
+    /// Payload: (alert_kind, notification_method, timestamp)
+    ///
+    /// NOTE: This event is also emitted directly inside `alerts.rs` via
+    /// `emit_alert_triggered`. This stub documents the schema for the audit
+    /// trail and can be called from `events.rs` if you prefer to centralise
+    /// event emission in future.
+    pub fn alert_triggered(
+        env: &Env,
+        owner: Address,
+        alert_id: u64,
+        // Using Symbol here keeps the payload ABI-stable regardless of the
+        // internal AlertKind enum layout across contract upgrades.
+        kind_tag: Symbol,
+        notification_method_tag: Symbol,
+        timestamp: u64,
+    ) {
+        env.events().publish(
+            (Symbol::new(env, "AlertTriggered"), owner, alert_id),
+            (kind_tag, notification_method_tag, timestamp),
+        );
+    }
+
+    /// Emitted when an alert is created so indexers can track the full
+    /// lifecycle (create → trigger → cleanup) without polling storage.
+    ///
+    /// Topic  : ("AlertCreated", owner_address, alert_id)
+    /// Payload: (kind_tag, expires_at)
+    pub fn alert_created(
+        env: &Env,
+        owner: Address,
+        alert_id: u64,
+        kind_tag: Symbol,
+        expires_at: u64,
+    ) {
+        env.events().publish(
+            (Symbol::new(env, "AlertCreated"), owner, alert_id),
+            (kind_tag, expires_at),
+        );
+    }
+}
 }

@@ -8,6 +8,9 @@ mod events;
 mod storage;
 mod rate_limit;
 mod invariants;
+mod alerts;
+#[cfg(test)]
+mod alerts_tests;
 mod batch {
     include!("../batch.rs");
 }
