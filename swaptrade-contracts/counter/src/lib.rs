@@ -17,6 +17,7 @@ mod tiers {
 mod oracle;
 mod batch_performance_tests;
 mod batch_opt_simple_test;
+mod batch_event_tests;
 
 mod portfolio {
     include!("../portfolio.rs");
@@ -178,6 +179,9 @@ impl CounterContract {
         portfolio.record_trade(&env, user.clone());
         env.storage().instance().set(&(), &portfolio);
 
+        // Flush batched badge events
+        crate::events::Events::flush_badge_events(&env);
+
         // Optional structured logging for successful swap
         #[cfg(feature = "logging")]
         {
@@ -221,6 +225,9 @@ impl CounterContract {
         let out_amount = perform_swap(&env, &mut portfolio, from, to, amount, user.clone());
         portfolio.record_trade(&env, user);
         env.storage().instance().set(&(), &portfolio);
+
+        // Flush batched badge events
+        crate::events::Events::flush_badge_events(&env);
 
         #[cfg(feature = "logging")]
         {
@@ -350,6 +357,7 @@ impl CounterContract {
         match result {
             Ok(res) => {
                 env.storage().instance().set(&(), &portfolio);
+                crate::events::Events::flush_badge_events(&env);
                 res
             }
             Err(_) => {
@@ -372,6 +380,7 @@ impl CounterContract {
         match result {
             Ok(res) => {
                 env.storage().instance().set(&(), &portfolio);
+                crate::events::Events::flush_badge_events(&env);
                 res
             }
             Err(_) => {
@@ -511,6 +520,9 @@ impl CounterContract {
         RateLimiter::record_lp_op(&env, &user, env.ledger().timestamp());
 
         env.storage().instance().set(&(), &portfolio);
+
+        // Flush batched badge events
+        crate::events::Events::flush_badge_events(&env);
 
         lp_tokens_minted
     }

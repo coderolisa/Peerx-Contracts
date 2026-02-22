@@ -231,7 +231,7 @@ impl Portfolio {
     /// Award a badge to a user if they don't already have it.
     /// Returns true if badge was awarded, false if user already had it.
     pub fn award_badge(&mut self, env: &Env, user: Address, badge: Badge) -> bool {
-        let key = (user, badge);
+        let key = (user.clone(), badge.clone());
 
         // Check if user already has this badge
         if self.has_badge(env, key.0.clone(), key.1.clone()) {
@@ -240,6 +240,9 @@ impl Portfolio {
 
         // Award the badge
     self.badges.set(key, true);
+        
+        // Buffer event instead of emitting immediately
+        crate::events::Events::badge_awarded(env, user, badge, env.ledger().timestamp() as i64);
         true
     }
 
