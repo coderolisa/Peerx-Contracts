@@ -73,4 +73,59 @@ impl Events {
         env.events()
             .publish((Symbol::new(env, "AdminResumed"), admin), (timestamp,));
     }
+
+    pub fn performance_metrics_calculated(
+        env: &Env,
+        user: Address,
+        time_window: crate::analytics::TimeWindow,
+        sharpe_ratio: u128,
+        max_drawdown: u128,
+        timestamp: i64,
+    ) {
+        env.events().publish(
+            (Symbol::new(env, "PerformanceMetricsCalculated"), user),
+            (time_window, sharpe_ratio, max_drawdown, timestamp),
+        );
+    }
+
+    pub fn asset_allocation_analyzed(
+        env: &Env,
+        user: Address,
+        total_assets: u32,
+        diversification_score: u128,
+        timestamp: i64,
+    ) {
+        env.events().publish(
+            (Symbol::new(env, "AssetAllocationAnalyzed"), user),
+            (total_assets, diversification_score, timestamp),
+        );
+    }
+
+    pub fn benchmark_comparison_calculated(
+        env: &Env,
+        user: Address,
+        benchmark_id: Symbol,
+        alpha: i128,
+        beta: u128,
+        timestamp: i64,
+    ) {
+        env.events().publish(
+            (Symbol::new(env, "BenchmarkComparisonCalculated"), user, benchmark_id),
+            (alpha, beta, timestamp),
+        );
+    }
+
+    pub fn period_returns_calculated(
+        env: &Env,
+        user: Address,
+        start_timestamp: u64,
+        end_timestamp: u64,
+        time_weighted_return: i128,
+        timestamp: i64,
+    ) {
+        env.events().publish(
+            (Symbol::new(env, "PeriodReturnsCalculated"), user),
+            (start_timestamp, end_timestamp, time_weighted_return, timestamp),
+        );
+    }
 }
