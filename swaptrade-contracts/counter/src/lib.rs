@@ -623,9 +623,10 @@ impl CounterContract {
 
     // ===== MULTI-TOKEN LIQUIDITY POOL FUNCTIONS =====
 
-    /// Register a new liquidity pool for arbitrary token pairs
+    /// Register a new liquidity pool for arbitrary token pairs (admin only)
     pub fn register_pool(
         env: Env,
+        admin: Address,
         token_a: Symbol,
         token_b: Symbol,
         initial_a: i128,
@@ -641,7 +642,7 @@ impl CounterContract {
             .unwrap_or_else(|| PoolRegistry::new(&env));
 
         let pool_id = registry
-            .register_pool(&env, token_a, token_b, initial_a, initial_b, fee_tier)
+            .register_pool(&env, admin, token_a, token_b, initial_a, initial_b, fee_tier)
             .unwrap();
 
         env.storage().instance().set(&POOL_REGISTRY_KEY, &registry);

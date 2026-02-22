@@ -11,21 +11,17 @@ fn test_add_liquidity_first_provider() {
     let client = CounterContractClient::new(&env, &contract_id);
     let user = Address::generate(&env);
 
-    // Mint initial balances
     client.mint(&symbol_short!("XLM"), &user, &1000);
     client.mint(&symbol_short!("USDCSIM"), &user, &1000);
 
-    // Add liquidity: 100 XLM + 100 USDC
     let lp_tokens = client.add_liquidity(&100, &100, &user);
 
-    // First provider should get LP tokens = sqrt(100 * 100) = 100
     assert!(lp_tokens > 0, "LP tokens should be minted");
     assert!(
         lp_tokens >= 99 && lp_tokens <= 101,
         "LP tokens should be approximately 100"
     );
 
-    // Check LP position
     let positions = client.get_lp_positions(&user);
     assert_eq!(positions.len(), 1, "User should have one LP position");
     let position = positions.get(0).unwrap();
@@ -34,7 +30,6 @@ fn test_add_liquidity_first_provider() {
     assert_eq!(position.usdc_deposited, 100);
     assert_eq!(position.lp_tokens_minted, lp_tokens);
 
-    // Check user's balance was debited (pool liquidity is tracked separately)
     let user_xlm = client.balance_of(&symbol_short!("XLM"), &user);
     assert_eq!(user_xlm, 900, "User should have 900 XLM remaining");
     let user_usdc = client.balance_of(&symbol_short!("USDCSIM"), &user);
@@ -48,11 +43,12 @@ fn test_register_pool() {
     let env = Env::default();
     let contract_id = env.register(CounterContract, ());
     let client = CounterContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
 
     let btc = symbol_short!("BTC");
     let eth = symbol_short!("ETH");
     
-    let pool_id = client.register_pool(&btc, &eth, &1000, &2000, &30);
+    let pool_id = client.register_pool(&admin, &btc, &eth, &1000, &2000, &30);
     assert_eq!(pool_id, 1);
 
     let pool = client.get_pool(&pool_id).unwrap();
@@ -66,12 +62,13 @@ fn test_pool_add_liquidity() {
     let env = Env::default();
     let contract_id = env.register(CounterContract, ());
     let client = CounterContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
     let provider = Address::generate(&env);
 
     let usdt = symbol_short!("USDT");
     let dai = symbol_short!("DAI");
     
-    let pool_id = client.register_pool(&usdt, &dai, &1000, &1000, &5);
+    let pool_id = client.register_pool(&admin, &usdt, &dai, &1000, &1000, &5);
     let lp_tokens = client.pool_add_liquidity(&pool_id, &500, &500, &provider);
     
     assert!(lp_tokens > 0);
@@ -86,11 +83,12 @@ fn test_pool_swap() {
     let env = Env::default();
     let contract_id = env.register(CounterContract, ());
     let client = CounterContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
 
     let token_a = symbol_short!("TOKA");
     let token_b = symbol_short!("TOKB");
     
-    let pool_id = client.register_pool(&token_a, &token_b, &10000, &10000, &30);
+    let pool_id = client.register_pool(&admin, &token_a, &token_b, &10000, &10000, &30);
     
     let amount_out = client.pool_swap(&pool_id, &token_a, &100, &90);
     
@@ -103,12 +101,13 @@ fn test_pool_remove_liquidity() {
     let env = Env::default();
     let contract_id = env.register(CounterContract, ());
     let client = CounterContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
     let provider = Address::generate(&env);
 
     let token_a = symbol_short!("TOKA");
     let token_b = symbol_short!("TOKB");
     
-    let pool_id = client.register_pool(&token_a, &token_b, &1000, &2000, &30);
+    let pool_id = client.register_pool(&admin, &token_a, &token_b, &1000, &2000, &30);
     let lp_tokens = client.pool_add_liquidity(&pool_id, &1000, &2000, &provider);
     
     let (amount_a, amount_b) = client.pool_remove_liquidity(&pool_id, &lp_tokens / 2, &provider);
@@ -122,11 +121,12 @@ fn test_find_best_route_direct() {
     let env = Env::default();
     let contract_id = env.register(CounterContract, ());
     let client = CounterContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
 
     let xlm = symbol_short!("XLM");
     let usdc = symbol_short!("USDC");
     
-    client.register_pool(&xlm, &usdc, &10000, &10000, &30);
+    client.register_pool(&admin, &xlm, &usdc, &10000, &10000, &30);
     
     let route = client.find_best_route(&xlm, &usdc, &100);
     assert!(route.is_some());
@@ -134,6 +134,7 @@ fn test_find_best_route_direct() {
     let r = route.unwrap();
     assert_eq!(r.pools.len(), 1);
     assert_eq!(r.tokens.len(), 2);
+    assert!(r.total_price_impact_bps > 0);
 }
 
 #[test]
@@ -141,13 +142,14 @@ fn test_find_best_route_multihop() {
     let env = Env::default();
     let contract_id = env.register(CounterContract, ());
     let client = CounterContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
 
     let xlm = symbol_short!("XLM");
     let usdc = symbol_short!("USDC");
     let btc = symbol_short!("BTC");
     
-    client.register_pool(&xlm, &usdc, &10000, &10000, &30);
-    client.register_pool(&usdc, &btc, &10000, &5000, &30);
+    client.register_pool(&admin, &xlm, &usdc, &10000, &10000, &30);
+    client.register_pool(&admin, &usdc, &btc, &10000, &5000, &30);
     
     let route = client.find_best_route(&xlm, &btc, &100);
     assert!(route.is_some());
@@ -155,6 +157,7 @@ fn test_find_best_route_multihop() {
     let r = route.unwrap();
     assert_eq!(r.pools.len(), 2);
     assert_eq!(r.tokens.len(), 3);
+    assert!(r.total_price_impact_bps > 0);
 }
 
 #[test]
@@ -162,13 +165,14 @@ fn test_multiple_fee_tiers() {
     let env = Env::default();
     let contract_id = env.register(CounterContract, ());
     let client = CounterContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
 
     let token_a = symbol_short!("TOKA");
     let token_b = symbol_short!("TOKB");
     
-    let pool1 = client.register_pool(&token_a, &token_b, &10000, &10000, &1);
-    let pool2 = client.register_pool(&symbol_short!("TOKC"), &symbol_short!("TOKD"), &10000, &10000, &5);
-    let pool3 = client.register_pool(&symbol_short!("TOKE"), &symbol_short!("TOKF"), &10000, &10000, &30);
+    let pool1 = client.register_pool(&admin, &token_a, &token_b, &10000, &10000, &1);
+    let pool2 = client.register_pool(&admin, &symbol_short!("TOKC"), &symbol_short!("TOKD"), &10000, &10000, &5);
+    let pool3 = client.register_pool(&admin, &symbol_short!("TOKE"), &symbol_short!("TOKF"), &10000, &10000, &30);
     
     let p1 = client.get_pool(&pool1).unwrap();
     let p2 = client.get_pool(&pool2).unwrap();
@@ -184,14 +188,29 @@ fn test_pool_lp_balance() {
     let env = Env::default();
     let contract_id = env.register(CounterContract, ());
     let client = CounterContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
     let provider = Address::generate(&env);
 
     let token_a = symbol_short!("TOKA");
     let token_b = symbol_short!("TOKB");
     
-    let pool_id = client.register_pool(&token_a, &token_b, &1000, &1000, &30);
+    let pool_id = client.register_pool(&admin, &token_a, &token_b, &1000, &1000, &30);
     let lp_tokens = client.pool_add_liquidity(&pool_id, &500, &500, &provider);
     
     let balance = client.get_pool_lp_balance(&pool_id, &provider);
     assert_eq!(balance, lp_tokens);
+}
+
+#[test]
+#[should_panic(expected = "InvalidAmount")]
+fn test_invalid_fee_tier() {
+    let env = Env::default();
+    let contract_id = env.register(CounterContract, ());
+    let client = CounterContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+
+    let token_a = symbol_short!("TOKA");
+    let token_b = symbol_short!("TOKB");
+    
+    client.register_pool(&admin, &token_a, &token_b, &1000, &1000, &100);
 }
