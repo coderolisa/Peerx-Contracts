@@ -3,8 +3,16 @@ use soroban_sdk::{symbol_short, Address, Env};
 use crate::alerts::{check_portfolio_alerts, check_price_alerts};
 use crate::errors::SwapTradeError;
 use crate::storage::PAUSED_KEY;
+use crate::tiers::UserTier;
+use crate::fee_progression::FeeProgression;
 
-pub fn swap(env: Env, user: Address, amount: i128) -> Result<(), SwapTradeError> {
+pub fn swap(
+    env: Env,
+    user: Address,
+    amount: i128,
+    fee_progression: &mut FeeProgression,
+    user_tier: &UserTier,
+) -> Result<i128, SwapTradeError> {
     user.require_auth();
 
     let paused = env
@@ -17,12 +25,25 @@ pub fn swap(env: Env, user: Address, amount: i128) -> Result<(), SwapTradeError>
         return Err(SwapTradeError::TradingPaused);
     }
 
-    // Swap logic is implemented in the top-level `trading.rs` that's included
-    // by the crate root. This function acts as a thin wrapper used by the
-    // contract interface. Keep it minimal to avoid duplication.
+    // Calculate effective fee with achievement discounts
+    let fee_result = user_tier.calculate_effective_fee_with_achievements(fee_progression, &env, &user);
+    let fee_amount = (amount * fee_result.effective_fee_bps as i128) / 10000;
+
+    // Emit fee calculation event for transparency
+    env.events().publish(
+        (
+            symbol_short!("fee_calculated"),
+            user.clone(),
+            amount,
+            fee_result.base_fee_bps,
+            fee_result.achievement_discount_bps,
+            fee_result.effective_fee_bps,
+            fee_amount,
+        ),
+    );
 
     // Check price alerts for the XLM token against the swap amount.
-    // In production, replace `amount` with the oracle price for the traded token.
+    // In production, replace `amount` with oracle price for the traded token.
     check_price_alerts(&env, &symbol_short!("XLM"), amount);
 
     // Check portfolio alerts for this user after the swap has been processed.
@@ -30,5 +51,6 @@ pub fn swap(env: Env, user: Address, amount: i128) -> Result<(), SwapTradeError>
     // the portfolio module instead of `amount`.
     check_portfolio_alerts(&env, &user, amount, amount);
 
-    Ok(())
+    // Return the calculated fee amount for the caller to use
+    Ok(fee_amount)
 }

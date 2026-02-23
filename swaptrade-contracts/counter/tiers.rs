@@ -1,5 +1,5 @@
 use soroban_sdk::contracttype;
-// use crate::tiers::UserTier;
+use crate::fee_progression::FeeProgression;
 
 #[derive(Clone, PartialEq, Debug)]
 #[contracttype]
@@ -11,7 +11,7 @@ pub enum UserTier {
 }
 
 impl UserTier {
-    /// Returns the effective fee in basis points (bps) for this tier
+    /// Returns the base fee in basis points (bps) for this tier
     /// 1 bps = 0.01%, so 30 bps = 0.3%
     pub fn effective_fee_bps(&self) -> u32 {
         match self {
@@ -22,13 +22,24 @@ impl UserTier {
         }
     }
 
-    /// Calculate the fee amount for a given swap amount
+    /// Calculate the fee amount for a given swap amount (base fee only)
     /// swap_amount should be in the smallest unit (e.g., with decimals)
     pub fn calculate_fee(&self, swap_amount: i128) -> i128 {
         let bps = self.effective_fee_bps() as i128;
         // Fee = (swap_amount * bps) / 10000
         // Using integer arithmetic to avoid floating point
         (swap_amount * bps) / 10000
+    }
+
+    /// Calculate effective fee with achievement discounts applied
+    /// This method integrates with the FeeProgression system
+    pub fn calculate_effective_fee_with_achievements(
+        &self,
+        fee_progression: &mut FeeProgression,
+        env: &soroban_sdk::Env,
+        user: &soroban_sdk::Address,
+    ) -> crate::fee_progression::FeeCalculationResult {
+        fee_progression.calculate_effective_fee(env, user, self)
     }
 }
 

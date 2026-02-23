@@ -336,4 +336,119 @@ mod rate_limit_tests {
         let check = RateLimiter::check_swap_limit(&env, &user, &trader);
         assert!(check.is_err());
     }
+
+    #[test]
+    fn test_cached_hourly_window_consistency() {
+        let (env, user) = create_test_env();
+        let novice = UserTier::Novice;
+
+        // Test that cached hourly windows are consistent across multiple calls
+        env.ledger().set_timestamp(3600); // Start of hour 1
+        
+        // Multiple calls should return the same window start
+        let status1 = RateLimiter::get_swap_status(&env, &user, &novice);
+        let status2 = RateLimiter::get_swap_status(&env, &user, &novice);
+        let status3 = RateLimiter::get_swap_status(&env, &user, &novice);
+        
+        // All should have the same cooldown (same window)
+        assert_eq!(status1.cooldown_ms, status2.cooldown_ms);
+        assert_eq!(status2.cooldown_ms, status3.cooldown_ms);
+        assert!(status1.cooldown_ms > 0);
+    }
+
+    #[test]
+    fn test_cached_daily_window_consistency() {
+        let (env, user) = create_test_env();
+        let novice = UserTier::Novice;
+
+        // Test that cached daily windows are consistent across multiple calls
+        env.ledger().set_timestamp(86400); // Start of day 1
+        
+        // Multiple calls should return the same window start
+        let status1 = RateLimiter::get_lp_status(&env, &user, &novice);
+        let status2 = RateLimiter::get_lp_status(&env, &user, &novice);
+        let status3 = RateLimiter::get_lp_status(&env, &user, &novice);
+        
+        // All should have the same cooldown (same window)
+        assert_eq!(status1.cooldown_ms, status2.cooldown_ms);
+        assert_eq!(status2.cooldown_ms, status3.cooldown_ms);
+        assert!(status1.cooldown_ms > 0);
+    }
+
+    #[test]
+    fn test_hourly_cache_invalidation_at_boundary() {
+        let (env, user) = create_test_env();
+        let novice = UserTier::Novice;
+
+        // Start in hour 0
+        env.ledger().set_timestamp(3500);
+        let status_before = RateLimiter::get_swap_status(&env, &user, &novice);
+        
+        // Cross to hour 1 - cache should invalidate and recalculate
+        env.ledger().set_timestamp(3600);
+        let status_after = RateLimiter::get_swap_status(&env, &user, &novice);
+        
+        // Cooldown should reset to full hour
+        assert_eq!(status_after.cooldown_ms, 3600000u64);
+        // Should be different from before (different window)
+        assert!(status_after.cooldown_ms > status_before.cooldown_ms);
+    }
+
+    #[test]
+    fn test_daily_cache_invalidation_at_boundary() {
+        let (env, user) = create_test_env();
+        let novice = UserTier::Novice;
+
+        // Start near end of day 0
+        env.ledger().set_timestamp(86000);
+        let status_before = RateLimiter::get_lp_status(&env, &user, &novice);
+        
+        // Cross to day 1 - cache should invalidate and recalculate
+        env.ledger().set_timestamp(86400);
+        let status_after = RateLimiter::get_lp_status(&env, &user, &novice);
+        
+        // Cooldown should reset to full day
+        assert_eq!(status_after.cooldown_ms, 86400000u64);
+        // Should be different from before (different window)
+        assert!(status_after.cooldown_ms > status_before.cooldown_ms);
+    }
+
+    #[test]
+    fn test_high_frequency_operations_with_cache() {
+        let (env, user) = create_test_env();
+        let trader = UserTier::Trader;
+
+        // Simulate high-frequency operations in same hour
+        env.ledger().set_timestamp(3600); // Start of hour
+        
+        // Record multiple operations rapidly
+        for i in 0..15 {
+            env.ledger().set_timestamp(3600 + i);
+            let result = RateLimiter::check_swap_limit(&env, &user, &trader);
+            assert!(result.is_ok(), "Swap {} should be allowed", i + 1);
+            RateLimiter::record_swap(&env, &user, env.ledger().timestamp());
+        }
+        
+        // Verify status is consistent
+        let status = RateLimiter::get_swap_status(&env, &user, &trader);
+        assert_eq!(status.used, 15);
+        assert_eq!(status.limit, 20);
+    }
+
+    #[test]
+    fn test_backward_compatibility_with_existing_data() {
+        let (env, user) = create_test_env();
+        let novice = UserTier::Novice;
+
+        // Simulate existing rate limit data using old method (direct window calculation)
+        env.ledger().set_timestamp(1000);
+        let old_window = crate::rate_limit::TimeWindow::hourly(1000);
+        let old_key = (user.clone(), symbol_short!("swap"), old_window.window_start);
+        env.storage().persistent().set(&old_key, &3u32); // 3 existing swaps
+
+        // New cached method should read the same data correctly
+        let status = RateLimiter::get_swap_status(&env, &user, &novice);
+        assert_eq!(status.used, 3);
+        assert_eq!(status.limit, 5);
+    }
 }
