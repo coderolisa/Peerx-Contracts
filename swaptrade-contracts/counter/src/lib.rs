@@ -6,6 +6,9 @@ mod admin;
 mod errors;
 mod events;
 mod invariants;
+mod alerts;
+#[cfg(test)]
+mod alerts_tests;
 mod rate_limit;
 mod storage;
 mod liquidity_pool;
