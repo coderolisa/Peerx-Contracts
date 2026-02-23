@@ -8,6 +8,7 @@ mod events;
 mod invariants;
 mod rate_limit;
 mod storage;
+mod liquidity_pool;
 mod batch {
     include!("../batch.rs");
 }
@@ -25,16 +26,20 @@ mod portfolio {
 mod trading {
     include!("../trading.rs");
 }
-pub mod migration;
+mod analytics;
+mod analytics;
 
 // Re-export invariant functions for external use
 pub use invariants::verify_contract_invariants;
+pub use liquidity_pool::{LiquidityPool, PoolRegistry, Route};
 
 use portfolio::{Asset, LPPosition, Portfolio};
 pub use portfolio::{Badge, Metrics, Transaction};
 pub use rate_limit::{RateLimitStatus, RateLimiter};
 pub use tiers::UserTier;
 use trading::perform_swap;
+use analytics::{PortfolioAnalytics, TimeWindow, PerformanceMetrics, AssetAllocation, BenchmarkComparison, PeriodReturns};
+pub use analytics::{TimeWindow, PerformanceMetrics, AssetAllocation, BenchmarkComparison, PeriodReturns};
 
 use crate::errors::SwapTradeError;
 use crate::storage::{ADMIN_KEY, PAUSED_KEY};
@@ -175,6 +180,10 @@ impl CounterContract {
         );
 
         portfolio.record_trade(&env, user.clone());
+
+        // Record daily portfolio value for analytics
+        portfolio.record_daily_portfolio_value(&env, user.clone(), env.ledger().timestamp());
+
         env.storage().instance().set(&(), &portfolio);
 
         // Flush batched badge events
@@ -192,15 +201,15 @@ impl CounterContract {
     }
 
     /// Non-panicking swap that counts failed orders and returns 0 on failure
-    pub fn try_swap(env: Env, from: Symbol, to: Symbol, amount: i128, user: Address) -> i128 {
+    pub fn safe_swap(env: Env, from: Symbol, to: Symbol, amount: i128, user: Address) -> i128 {
         let mut portfolio: Portfolio = env
             .storage()
             .instance()
             .get(&())
             .unwrap_or_else(|| Portfolio::new(&env));
 
-        let tokens_ok = (from == Symbol::short("XLM") || from == Symbol::short("USDCSIM"))
-            && (to == Symbol::short("XLM") || to == Symbol::short("USDCSIM"));
+        let tokens_ok = (from == symbol_short!("XLM") || from == symbol_short!("USDCSIM"))
+            && (to == symbol_short!("XLM") || to == symbol_short!("USDCSIM"));
         let pair_ok = from != to;
         let amount_ok = amount > 0;
 
@@ -626,8 +635,68 @@ impl CounterContract {
         }
         result
     }
+
+    /// Get comprehensive performance metrics for a user
+    pub fn get_performance_metrics(
+        env: Env,
+        user: Address,
+        time_window: TimeWindow,
+    ) -> PerformanceMetrics {
+        let portfolio: Portfolio = env
+            .storage()
+            .instance()
+            .get(&())
+            .unwrap_or_else(|| Portfolio::new(&env));
+
+        PortfolioAnalytics::get_performance_metrics(&env, &portfolio, user, time_window)
+    }
+
+    /// Get asset allocation breakdown with correlation analysis
+    pub fn get_asset_allocation(env: Env, user: Address) -> AssetAllocation {
+        let portfolio: Portfolio = env
+            .storage()
+            .instance()
+            .get(&())
+            .unwrap_or_else(|| Portfolio::new(&env));
+
+        PortfolioAnalytics::get_asset_allocation(&env, &portfolio, user)
+    }
+
+    /// Compare portfolio performance against a benchmark
+    pub fn get_benchmark_comparison(
+        env: Env,
+        user: Address,
+        benchmark_id: Symbol,
+        time_window: TimeWindow,
+    ) -> BenchmarkComparison {
+        let portfolio: Portfolio = env
+            .storage()
+            .instance()
+            .get(&())
+            .unwrap_or_else(|| Portfolio::new(&env));
+
+        PortfolioAnalytics::get_benchmark_comparison(&env, &portfolio, user, benchmark_id, time_window)
+    }
+
+    /// Calculate period returns between timestamps
+    pub fn get_period_returns(
+        env: Env,
+        user: Address,
+        start_timestamp: u64,
+        end_timestamp: u64,
+    ) -> PeriodReturns {
+        let portfolio: Portfolio = env
+            .storage()
+            .instance()
+            .get(&())
+            .unwrap_or_else(|| Portfolio::new(&env));
+
+        PortfolioAnalytics::get_period_returns(&env, &portfolio, user, start_timestamp, end_timestamp)
+    }
 }
 
+#[cfg(test)]
+mod analytics_tests;
 #[cfg(test)]
 mod balance_test;
 #[cfg(test)]
