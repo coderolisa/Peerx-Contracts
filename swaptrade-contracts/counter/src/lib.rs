@@ -8,6 +8,7 @@ mod events;
 mod storage;
 mod rate_limit;
 mod invariants;
+mod liquidity_pool;
 mod batch {
     include!("../batch.rs");
 }
@@ -28,6 +29,7 @@ pub mod migration;
 
 // Re-export invariant functions for external use
 pub use invariants::verify_contract_invariants;
+pub use liquidity_pool::{LiquidityPool, PoolRegistry, Route};
 
 use portfolio::{Asset, LPPosition, Portfolio};
 pub use portfolio::{Badge, Metrics, Transaction};
@@ -190,15 +192,15 @@ impl CounterContract {
     }
 
     /// Non-panicking swap that counts failed orders and returns 0 on failure
-    pub fn try_swap(env: Env, from: Symbol, to: Symbol, amount: i128, user: Address) -> i128 {
+    pub fn safe_swap(env: Env, from: Symbol, to: Symbol, amount: i128, user: Address) -> i128 {
         let mut portfolio: Portfolio = env
             .storage()
             .instance()
             .get(&())
             .unwrap_or_else(|| Portfolio::new(&env));
 
-        let tokens_ok = (from == Symbol::short("XLM") || from == Symbol::short("USDCSIM"))
-            && (to == Symbol::short("XLM") || to == Symbol::short("USDCSIM"));
+        let tokens_ok = (from == symbol_short!("XLM") || from == symbol_short!("USDCSIM"))
+            && (to == symbol_short!("XLM") || to == symbol_short!("USDCSIM"));
         let pair_ok = from != to;
         let amount_ok = amount > 0;
 
@@ -617,6 +619,149 @@ impl CounterContract {
             result.push_back(position);
         }
         result
+    }
+
+    // ===== MULTI-TOKEN LIQUIDITY POOL FUNCTIONS =====
+
+    /// Register a new liquidity pool for arbitrary token pairs (admin only)
+    pub fn register_pool(
+        env: Env,
+        admin: Address,
+        token_a: Symbol,
+        token_b: Symbol,
+        initial_a: i128,
+        initial_b: i128,
+        fee_tier: u32,
+    ) -> u64 {
+        use crate::storage::POOL_REGISTRY_KEY;
+        
+        let mut registry: PoolRegistry = env
+            .storage()
+            .instance()
+            .get(&POOL_REGISTRY_KEY)
+            .unwrap_or_else(|| PoolRegistry::new(&env));
+
+        let pool_id = registry
+            .register_pool(&env, admin, token_a, token_b, initial_a, initial_b, fee_tier)
+            .unwrap();
+
+        env.storage().instance().set(&POOL_REGISTRY_KEY, &registry);
+        pool_id
+    }
+
+    /// Add liquidity to a specific pool
+    pub fn pool_add_liquidity(
+        env: Env,
+        pool_id: u64,
+        amount_a: i128,
+        amount_b: i128,
+        provider: Address,
+    ) -> i128 {
+        use crate::storage::POOL_REGISTRY_KEY;
+        
+        let mut registry: PoolRegistry = env
+            .storage()
+            .instance()
+            .get(&POOL_REGISTRY_KEY)
+            .unwrap_or_else(|| PoolRegistry::new(&env));
+
+        let lp_tokens = registry
+            .add_liquidity(&env, pool_id, amount_a, amount_b, provider)
+            .unwrap();
+
+        env.storage().instance().set(&POOL_REGISTRY_KEY, &registry);
+        lp_tokens
+    }
+
+    /// Remove liquidity from a specific pool
+    pub fn pool_remove_liquidity(
+        env: Env,
+        pool_id: u64,
+        lp_tokens: i128,
+        provider: Address,
+    ) -> (i128, i128) {
+        use crate::storage::POOL_REGISTRY_KEY;
+        
+        let mut registry: PoolRegistry = env
+            .storage()
+            .instance()
+            .get(&POOL_REGISTRY_KEY)
+            .unwrap_or_else(|| PoolRegistry::new(&env));
+
+        let amounts = registry
+            .remove_liquidity(&env, pool_id, lp_tokens, provider)
+            .unwrap();
+
+        env.storage().instance().set(&POOL_REGISTRY_KEY, &registry);
+        amounts
+    }
+
+    /// Swap tokens in a specific pool with slippage protection
+    pub fn pool_swap(
+        env: Env,
+        pool_id: u64,
+        token_in: Symbol,
+        amount_in: i128,
+        min_amount_out: i128,
+    ) -> i128 {
+        use crate::storage::POOL_REGISTRY_KEY;
+        
+        let mut registry: PoolRegistry = env
+            .storage()
+            .instance()
+            .get(&POOL_REGISTRY_KEY)
+            .unwrap_or_else(|| PoolRegistry::new(&env));
+
+        let amount_out = registry
+            .swap(&env, pool_id, token_in, amount_in, min_amount_out)
+            .unwrap();
+
+        env.storage().instance().set(&POOL_REGISTRY_KEY, &registry);
+        amount_out
+    }
+
+    /// Find the best route for a token swap (supports multi-hop)
+    pub fn find_best_route(
+        env: Env,
+        token_in: Symbol,
+        token_out: Symbol,
+        amount_in: i128,
+    ) -> Option<Route> {
+        use crate::storage::POOL_REGISTRY_KEY;
+        
+        let registry: PoolRegistry = env
+            .storage()
+            .instance()
+            .get(&POOL_REGISTRY_KEY)
+            .unwrap_or_else(|| PoolRegistry::new(&env));
+
+        registry.find_best_route(&env, token_in, token_out, amount_in)
+    }
+
+    /// Get pool information
+    pub fn get_pool(env: Env, pool_id: u64) -> Option<LiquidityPool> {
+        use crate::storage::POOL_REGISTRY_KEY;
+        
+        let registry: PoolRegistry = env
+            .storage()
+            .instance()
+            .get(&POOL_REGISTRY_KEY)
+            .unwrap_or_else(|| PoolRegistry::new(&env));
+
+        registry.get_pool(pool_id)
+    }
+
+    /// Get LP token balance for a provider in a specific pool
+    pub fn get_pool_lp_balance(env: Env, pool_id: u64, provider: Address) -> i128 {
+        use crate::storage::POOL_REGISTRY_KEY;
+        
+        let registry: PoolRegistry = env
+            .storage()
+            .instance()
+            .get(&POOL_REGISTRY_KEY)
+            .unwrap_or_else(|| PoolRegistry::new(&env));
+
+        registry.get_lp_balance(pool_id, provider)
     }
 }
 
