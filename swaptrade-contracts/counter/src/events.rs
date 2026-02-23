@@ -1,4 +1,14 @@
-use soroban_sdk::{Address, Env, Symbol};
+use soroban_sdk::{contracttype, Address, Env, Symbol, Vec};
+
+#[contracttype]
+#[derive(Clone)]
+pub struct BadgeEvent {
+    pub user: Address,
+    pub badge: crate::portfolio::Badge,
+    pub timestamp: i64,
+}
+
+const EVENT_BUFFER_KEY: Symbol = Symbol::short("evt_buf");
 
 pub struct Events;
 
@@ -47,8 +57,28 @@ impl Events {
     }
 
     pub fn badge_awarded(env: &Env, user: Address, badge: crate::portfolio::Badge, timestamp: i64) {
-        env.events()
-            .publish((Symbol::new(env, "BadgeAwarded"), user), (badge, timestamp));
+        let mut buffer: Vec<BadgeEvent> = env
+            .storage()
+            .temporary()
+            .get(&EVENT_BUFFER_KEY)
+            .unwrap_or_else(|| Vec::new(env));
+        buffer.push_back(BadgeEvent {
+            user,
+            badge,
+            timestamp,
+        });
+        env.storage().temporary().set(&EVENT_BUFFER_KEY, &buffer);
+    }
+
+    pub fn flush_badge_events(env: &Env) {
+        let buffer: Option<Vec<BadgeEvent>> = env.storage().temporary().get(&EVENT_BUFFER_KEY);
+        if let Some(events) = buffer {
+            if !events.is_empty() {
+                env.events()
+                    .publish((Symbol::new(env, "BadgesAwarded"),), events);
+                env.storage().temporary().remove(&EVENT_BUFFER_KEY);
+            }
+        }
     }
 
     pub fn user_tier_changed(

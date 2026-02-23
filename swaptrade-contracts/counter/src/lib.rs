@@ -1,13 +1,13 @@
 #![cfg_attr(not(test), no_std)]
-use soroban_sdk::{contract, contractimpl, Address, Env, Symbol, Vec, symbol_short};
+use soroban_sdk::{contract, contractimpl, symbol_short, Address, Env, Symbol, Vec};
 
 // Bring in modules from parent directory
 mod admin;
 mod errors;
 mod events;
-mod storage;
-mod rate_limit;
 mod invariants;
+mod rate_limit;
+mod storage;
 mod liquidity_pool;
 mod batch {
     include!("../batch.rs");
@@ -15,9 +15,10 @@ mod batch {
 mod tiers {
     include!("../tiers.rs");
 }
-mod oracle;
-mod batch_performance_tests;
+mod batch_event_tests;
 mod batch_opt_simple_test;
+mod batch_performance_tests;
+mod oracle;
 
 mod portfolio {
     include!("../portfolio.rs");
@@ -63,9 +64,7 @@ pub fn set_admin(env: Env, new_admin: Address) -> Result<(), SwapTradeError> {
 }
 
 // Batch imports
-use batch::{
-    execute_batch_atomic, execute_batch_best_effort, BatchOperation, BatchResult,
-};
+use batch::{execute_batch_atomic, execute_batch_best_effort, BatchOperation, BatchResult};
 
 // Oracle imports
 use oracle::get_price_safe;
@@ -187,6 +186,9 @@ impl CounterContract {
 
         env.storage().instance().set(&(), &portfolio);
 
+        // Flush batched badge events
+        crate::events::Events::flush_badge_events(&env);
+
         // Optional structured logging for successful swap
         #[cfg(feature = "logging")]
         {
@@ -219,10 +221,8 @@ impl CounterContract {
             #[cfg(feature = "logging")]
             {
                 use soroban_sdk::symbol_short;
-                env.events().publish(
-                    (symbol_short!("fail"), user.clone()),
-                    (from, to, amount),
-                );
+                env.events()
+                    .publish((symbol_short!("fail"), user.clone()), (from, to, amount));
             }
             return 0;
         }
@@ -230,6 +230,9 @@ impl CounterContract {
         let out_amount = perform_swap(&env, &mut portfolio, from, to, amount, user.clone());
         portfolio.record_trade(&env, user);
         env.storage().instance().set(&(), &portfolio);
+
+        // Flush batched badge events
+        crate::events::Events::flush_badge_events(&env);
 
         #[cfg(feature = "logging")]
         {
@@ -359,6 +362,7 @@ impl CounterContract {
         match result {
             Ok(res) => {
                 env.storage().instance().set(&(), &portfolio);
+                crate::events::Events::flush_badge_events(&env);
                 res
             }
             Err(_) => {
@@ -381,6 +385,7 @@ impl CounterContract {
         match result {
             Ok(res) => {
                 env.storage().instance().set(&(), &portfolio);
+                crate::events::Events::flush_badge_events(&env);
                 res
             }
             Err(_) => {
@@ -520,6 +525,9 @@ impl CounterContract {
         RateLimiter::record_lp_op(&env, &user, env.ledger().timestamp());
 
         env.storage().instance().set(&(), &portfolio);
+
+        // Flush batched badge events
+        crate::events::Events::flush_badge_events(&env);
 
         lp_tokens_minted
     }
@@ -696,6 +704,8 @@ mod batch_tests;
 #[cfg(test)]
 mod enhanced_trading_tests; // NEW: Enhanced trading tests for better coverage
 #[cfg(test)]
+mod fuzz_tests;
+#[cfg(test)]
 mod lp_tests;
 mod migration_tests;
 #[cfg(test)]
@@ -703,8 +713,6 @@ mod oracle_tests;
 #[cfg(test)]
 mod rate_limit_tests;
 #[cfg(test)]
-mod transaction_tests;
-#[cfg(test)]
-mod fuzz_tests; // NEW: Fuzz tests for security hardening
+mod transaction_tests; // NEW: Fuzz tests for security hardening
 
 // trading tests are provided as integration/unit tests in the repository tests/ folder
