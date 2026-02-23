@@ -133,7 +133,85 @@ fn test_price_impact_on_pool() {
     // Slip = 200 * 0.238 = 47.6 -> 47.
     // Out = 200 - 47 = 153.
     let out_b = client.swap(&xlm, &usdc, &200, &user);
-    assert_eq!(out_b, 153); // Confirms slippage increases as pool depletes
+    assert_eq!(out_b, 153);
+}
+
+#[test]
+fn test_coalescing_identical_price() {
+    let env = Env::default();
+    let contract_id = env.register(CounterContract, ());
+    let client = CounterContractClient::new(&env, &contract_id);
+    let xlm = symbol_short!("XLM");
+    let usdc = symbol_short!("USDCSIM");
+    let pair = (xlm.clone(), usdc.clone());
+    let price = 500_000_000_000_000_000u128;
+    client.set_price(&pair, &price);
+    client.set_price(&pair, &price);
+    assert_eq!(client.get_current_price(&pair), price);
+}
+
+#[test]
+fn test_coalescing_sub_threshold_skip_write() {
+    let env = Env::default();
+    let contract_id = env.register(CounterContract, ());
+    let client = CounterContractClient::new(&env, &contract_id);
+    let xlm = symbol_short!("XLM");
+    let usdc = symbol_short!("USDCSIM");
+    let pair = (xlm.clone(), usdc.clone());
+    let price = PRECISION;
+    client.set_price(&pair, &price);
+    let small_change = (price as u128).saturating_mul(10_005) / 10_000;
+    client.set_price(&pair, &small_change);
+    assert_eq!(client.get_current_price(&pair), price);
+}
+
+#[test]
+fn test_coalescing_above_threshold_persists() {
+    let env = Env::default();
+    let contract_id = env.register(CounterContract, ());
+    let client = CounterContractClient::new(&env, &contract_id);
+    let xlm = symbol_short!("XLM");
+    let usdc = symbol_short!("USDCSIM");
+    let pair = (xlm.clone(), usdc.clone());
+    let price = PRECISION;
+    client.set_price(&pair, &price);
+    let larger_change = (price as u128).saturating_mul(10_020) / 10_000;
+    client.set_price(&pair, &larger_change);
+    assert_eq!(client.get_current_price(&pair), larger_change);
+}
+
+#[test]
+fn test_coalesced_price_respects_slippage_limits() {
+    let env = Env::default();
+    let contract_id = env.register(CounterContract, ());
+    let client = CounterContractClient::new(&env, &contract_id);
+    let user = Address::generate(&env);
+    let xlm = symbol_short!("XLM");
+    let usdc = symbol_short!("USDCSIM");
+    client.set_price(&(xlm.clone(), usdc.clone()), &PRECISION);
+    client.mint(&xlm, &user, &1000);
+    client.set_pool_liquidity(&usdc, &1000);
+    let sub = (PRECISION as u128).saturating_mul(10_005) / 10_000;
+    client.set_price(&(xlm.clone(), usdc.clone()), &sub);
+    client.set_price(&(xlm.clone(), usdc.clone()), &sub);
+    let out = client.swap(&xlm, &usdc, &100, &user);
+    assert_eq!(out, 100);
+}
+
+#[test]
+fn test_per_pair_tolerance_config() {
+    let env = Env::default();
+    let contract_id = env.register(CounterContract, ());
+    let client = CounterContractClient::new(&env, &contract_id);
+    let xlm = symbol_short!("XLM");
+    let usdc = symbol_short!("USDCSIM");
+    let pair = (xlm.clone(), usdc.clone());
+    let price = PRECISION;
+    client.set_price(&pair, &price);
+    client.set_price_update_tolerance_bps(&pair, &50);
+    let change_03pct = (price as u128).saturating_mul(10_030) / 10_000;
+    client.set_price(&pair, &change_03pct);
+    assert_eq!(client.get_current_price(&pair), change_03pct);
 }
 
 #[test]

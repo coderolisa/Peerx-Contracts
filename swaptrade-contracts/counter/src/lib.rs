@@ -70,7 +70,7 @@ pub fn set_admin(env: Env, new_admin: Address) -> Result<(), SwapTradeError> {
 use batch::{execute_batch_atomic, execute_batch_best_effort, BatchOperation, BatchResult};
 
 // Oracle imports
-use oracle::get_price_safe;
+use oracle::{get_stored_price, set_stored_price};
 pub const CONTRACT_VERSION: u32 = 1;
 
 #[contract]
@@ -639,6 +639,22 @@ impl CounterContract {
         result
     }
 
+    pub fn set_price(env: Env, token_pair: (Symbol, Symbol), price: u128) {
+        set_stored_price(&env, token_pair, price);
+    }
+
+    pub fn get_current_price(env: Env, token_pair: (Symbol, Symbol)) -> u128 {
+        get_stored_price(&env, token_pair)
+            .map(|d| d.price)
+            .unwrap_or(0)
+    }
+
+    pub fn set_price_update_tolerance_bps(env: Env, token_pair: (Symbol, Symbol), bps: u32) {
+        oracle::set_price_update_tolerance_bps(&env, token_pair, bps);
+    }
+
+    pub fn set_pool_liquidity(env: Env, token: Symbol, amount: i128) {
+        let mut portfolio: Portfolio = env
     /// Get comprehensive performance metrics for a user
     pub fn get_performance_metrics(
         env: Env,
@@ -677,6 +693,17 @@ impl CounterContract {
             .instance()
             .get(&())
             .unwrap_or_else(|| Portfolio::new(&env));
+        let asset = if token == symbol_short!("XLM") {
+            Asset::XLM
+        } else {
+            Asset::Custom(token)
+        };
+        portfolio.set_liquidity(asset, amount);
+        env.storage().instance().set(&(), &portfolio);
+    }
+
+    pub fn set_max_slippage_bps(env: Env, bps: u32) {
+        env.storage().instance().set(&symbol_short!("MAX_SLIP"), &bps);
 
         PortfolioAnalytics::get_benchmark_comparison(&env, &portfolio, user, benchmark_id, time_window)
     }
