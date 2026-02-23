@@ -8,6 +8,7 @@ mod events;
 mod storage;
 mod rate_limit;
 mod invariants;
+mod liquidity_pool;
 mod batch {
     include!("../batch.rs");
 }
@@ -29,6 +30,7 @@ mod analytics;
 
 // Re-export invariant functions for external use
 pub use invariants::verify_contract_invariants;
+pub use liquidity_pool::{LiquidityPool, PoolRegistry, Route};
 
 use portfolio::{Asset, LPPosition, Portfolio};
 pub use portfolio::{Badge, Metrics, Transaction};
@@ -197,15 +199,15 @@ impl CounterContract {
     }
 
     /// Non-panicking swap that counts failed orders and returns 0 on failure
-    pub fn try_swap(env: Env, from: Symbol, to: Symbol, amount: i128, user: Address) -> i128 {
+    pub fn safe_swap(env: Env, from: Symbol, to: Symbol, amount: i128, user: Address) -> i128 {
         let mut portfolio: Portfolio = env
             .storage()
             .instance()
             .get(&())
             .unwrap_or_else(|| Portfolio::new(&env));
 
-        let tokens_ok = (from == Symbol::short("XLM") || from == Symbol::short("USDCSIM"))
-            && (to == Symbol::short("XLM") || to == Symbol::short("USDCSIM"));
+        let tokens_ok = (from == symbol_short!("XLM") || from == symbol_short!("USDCSIM"))
+            && (to == symbol_short!("XLM") || to == symbol_short!("USDCSIM"));
         let pair_ok = from != to;
         let amount_ok = amount > 0;
 
