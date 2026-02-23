@@ -135,3 +135,35 @@ fn test_price_impact_on_pool() {
     let out_b = client.swap(&xlm, &usdc, &200, &user);
     assert_eq!(out_b, 153); // Confirms slippage increases as pool depletes
 }
+
+#[test]
+fn test_register_and_get_consensus_price() {
+    let mut oracle = DecentralizedOracle::new();
+
+    let feed1 = MockFeedProvider::new(vec![(("XLM", "USD"), 500, 1)]);
+    let feed2 = MockFeedProvider::new(vec![(("XLM", "USD"), 505, 1)]);
+    let feed3 = MockFeedProvider::new(vec![(("XLM", "USD"), 495, 1)]);
+
+    oracle.register_feed(feed1);
+    oracle.register_feed(feed2);
+    oracle.register_feed(feed3);
+
+    let consensus_price = oracle.get_consensus_price(("XLM", "USD"));
+    assert_eq!(consensus_price, Some(500));
+}
+
+#[test]
+fn test_anomaly_detection() {
+    let mut oracle = DecentralizedOracle::new();
+
+    let feed1 = MockFeedProvider::new(vec![(("XLM", "USD"), 500, 1)]);
+    let feed2 = MockFeedProvider::new(vec![(("XLM", "USD"), 1000, 1)]);
+    let feed3 = MockFeedProvider::new(vec![(("XLM", "USD"), 495, 1)]);
+
+    oracle.register_feed(feed1);
+    oracle.register_feed(feed2);
+    oracle.register_feed(feed3);
+
+    let anomalies = oracle.detect_anomalies(("XLM", "USD"));
+    assert_eq!(anomalies, vec![1]);
+}
