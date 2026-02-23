@@ -25,7 +25,8 @@ mod portfolio {
 mod trading {
     include!("../trading.rs");
 }
-pub mod migration;
+mod analytics;
+mod analytics;
 
 // Re-export invariant functions for external use
 pub use invariants::verify_contract_invariants;
@@ -36,6 +37,8 @@ pub use portfolio::{Badge, Metrics, Transaction};
 pub use rate_limit::{RateLimitStatus, RateLimiter};
 pub use tiers::UserTier;
 use trading::perform_swap;
+use analytics::{PortfolioAnalytics, TimeWindow, PerformanceMetrics, AssetAllocation, BenchmarkComparison, PeriodReturns};
+pub use analytics::{TimeWindow, PerformanceMetrics, AssetAllocation, BenchmarkComparison, PeriodReturns};
 
 use crate::errors::SwapTradeError;
 use crate::storage::{ADMIN_KEY, PAUSED_KEY};
@@ -178,6 +181,10 @@ impl CounterContract {
         );
 
         portfolio.record_trade(&env, user.clone());
+
+        // Record daily portfolio value for analytics
+        portfolio.record_daily_portfolio_value(&env, user.clone(), env.ledger().timestamp());
+
         env.storage().instance().set(&(), &portfolio);
 
         // Optional structured logging for successful swap
@@ -621,150 +628,67 @@ impl CounterContract {
         result
     }
 
-    // ===== MULTI-TOKEN LIQUIDITY POOL FUNCTIONS =====
-
-    /// Register a new liquidity pool for arbitrary token pairs (admin only)
-    pub fn register_pool(
+    /// Get comprehensive performance metrics for a user
+    pub fn get_performance_metrics(
         env: Env,
-        admin: Address,
-        token_a: Symbol,
-        token_b: Symbol,
-        initial_a: i128,
-        initial_b: i128,
-        fee_tier: u32,
-    ) -> u64 {
-        use crate::storage::POOL_REGISTRY_KEY;
-        
-        let mut registry: PoolRegistry = env
+        user: Address,
+        time_window: TimeWindow,
+    ) -> PerformanceMetrics {
+        let portfolio: Portfolio = env
             .storage()
             .instance()
-            .get(&POOL_REGISTRY_KEY)
-            .unwrap_or_else(|| PoolRegistry::new(&env));
+            .get(&())
+            .unwrap_or_else(|| Portfolio::new(&env));
 
-        let pool_id = registry
-            .register_pool(&env, admin, token_a, token_b, initial_a, initial_b, fee_tier)
-            .unwrap();
-
-        env.storage().instance().set(&POOL_REGISTRY_KEY, &registry);
-        pool_id
+        PortfolioAnalytics::get_performance_metrics(&env, &portfolio, user, time_window)
     }
 
-    /// Add liquidity to a specific pool
-    pub fn pool_add_liquidity(
+    /// Get asset allocation breakdown with correlation analysis
+    pub fn get_asset_allocation(env: Env, user: Address) -> AssetAllocation {
+        let portfolio: Portfolio = env
+            .storage()
+            .instance()
+            .get(&())
+            .unwrap_or_else(|| Portfolio::new(&env));
+
+        PortfolioAnalytics::get_asset_allocation(&env, &portfolio, user)
+    }
+
+    /// Compare portfolio performance against a benchmark
+    pub fn get_benchmark_comparison(
         env: Env,
-        pool_id: u64,
-        amount_a: i128,
-        amount_b: i128,
-        provider: Address,
-    ) -> i128 {
-        use crate::storage::POOL_REGISTRY_KEY;
-        
-        let mut registry: PoolRegistry = env
+        user: Address,
+        benchmark_id: Symbol,
+        time_window: TimeWindow,
+    ) -> BenchmarkComparison {
+        let portfolio: Portfolio = env
             .storage()
             .instance()
-            .get(&POOL_REGISTRY_KEY)
-            .unwrap_or_else(|| PoolRegistry::new(&env));
+            .get(&())
+            .unwrap_or_else(|| Portfolio::new(&env));
 
-        let lp_tokens = registry
-            .add_liquidity(&env, pool_id, amount_a, amount_b, provider)
-            .unwrap();
-
-        env.storage().instance().set(&POOL_REGISTRY_KEY, &registry);
-        lp_tokens
+        PortfolioAnalytics::get_benchmark_comparison(&env, &portfolio, user, benchmark_id, time_window)
     }
 
-    /// Remove liquidity from a specific pool
-    pub fn pool_remove_liquidity(
+    /// Calculate period returns between timestamps
+    pub fn get_period_returns(
         env: Env,
-        pool_id: u64,
-        lp_tokens: i128,
-        provider: Address,
-    ) -> (i128, i128) {
-        use crate::storage::POOL_REGISTRY_KEY;
-        
-        let mut registry: PoolRegistry = env
+        user: Address,
+        start_timestamp: u64,
+        end_timestamp: u64,
+    ) -> PeriodReturns {
+        let portfolio: Portfolio = env
             .storage()
             .instance()
-            .get(&POOL_REGISTRY_KEY)
-            .unwrap_or_else(|| PoolRegistry::new(&env));
+            .get(&())
+            .unwrap_or_else(|| Portfolio::new(&env));
 
-        let amounts = registry
-            .remove_liquidity(&env, pool_id, lp_tokens, provider)
-            .unwrap();
-
-        env.storage().instance().set(&POOL_REGISTRY_KEY, &registry);
-        amounts
-    }
-
-    /// Swap tokens in a specific pool with slippage protection
-    pub fn pool_swap(
-        env: Env,
-        pool_id: u64,
-        token_in: Symbol,
-        amount_in: i128,
-        min_amount_out: i128,
-    ) -> i128 {
-        use crate::storage::POOL_REGISTRY_KEY;
-        
-        let mut registry: PoolRegistry = env
-            .storage()
-            .instance()
-            .get(&POOL_REGISTRY_KEY)
-            .unwrap_or_else(|| PoolRegistry::new(&env));
-
-        let amount_out = registry
-            .swap(&env, pool_id, token_in, amount_in, min_amount_out)
-            .unwrap();
-
-        env.storage().instance().set(&POOL_REGISTRY_KEY, &registry);
-        amount_out
-    }
-
-    /// Find the best route for a token swap (supports multi-hop)
-    pub fn find_best_route(
-        env: Env,
-        token_in: Symbol,
-        token_out: Symbol,
-        amount_in: i128,
-    ) -> Option<Route> {
-        use crate::storage::POOL_REGISTRY_KEY;
-        
-        let registry: PoolRegistry = env
-            .storage()
-            .instance()
-            .get(&POOL_REGISTRY_KEY)
-            .unwrap_or_else(|| PoolRegistry::new(&env));
-
-        registry.find_best_route(&env, token_in, token_out, amount_in)
-    }
-
-    /// Get pool information
-    pub fn get_pool(env: Env, pool_id: u64) -> Option<LiquidityPool> {
-        use crate::storage::POOL_REGISTRY_KEY;
-        
-        let registry: PoolRegistry = env
-            .storage()
-            .instance()
-            .get(&POOL_REGISTRY_KEY)
-            .unwrap_or_else(|| PoolRegistry::new(&env));
-
-        registry.get_pool(pool_id)
-    }
-
-    /// Get LP token balance for a provider in a specific pool
-    pub fn get_pool_lp_balance(env: Env, pool_id: u64, provider: Address) -> i128 {
-        use crate::storage::POOL_REGISTRY_KEY;
-        
-        let registry: PoolRegistry = env
-            .storage()
-            .instance()
-            .get(&POOL_REGISTRY_KEY)
-            .unwrap_or_else(|| PoolRegistry::new(&env));
-
-        registry.get_lp_balance(pool_id, provider)
+        PortfolioAnalytics::get_period_returns(&env, &portfolio, user, start_timestamp, end_timestamp)
     }
 }
 
+#[cfg(test)]
+mod analytics_tests;
 #[cfg(test)]
 mod balance_test;
 #[cfg(test)]
