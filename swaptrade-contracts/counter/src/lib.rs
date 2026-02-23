@@ -1,25 +1,27 @@
 #![cfg_attr(not(test), no_std)]
-use soroban_sdk::{contract, contractimpl, Address, Env, Symbol, Vec, symbol_short};
+use soroban_sdk::{contract, contractimpl, symbol_short, Address, Env, Symbol, Vec};
 
 // Bring in modules from parent directory
 mod admin;
 mod errors;
 mod events;
-mod storage;
-mod rate_limit;
 mod invariants;
 mod alerts;
 #[cfg(test)]
 mod alerts_tests;
+mod rate_limit;
+mod storage;
+mod liquidity_pool;
 mod batch {
     include!("../batch.rs");
 }
 mod tiers {
     include!("../tiers.rs");
 }
-mod oracle;
-mod batch_performance_tests;
+mod batch_event_tests;
 mod batch_opt_simple_test;
+mod batch_performance_tests;
+mod oracle;
 
 mod portfolio {
     include!("../portfolio.rs");
@@ -27,16 +29,20 @@ mod portfolio {
 mod trading {
     include!("../trading.rs");
 }
-pub mod migration;
+mod analytics;
+mod analytics;
 
 // Re-export invariant functions for external use
 pub use invariants::verify_contract_invariants;
+pub use liquidity_pool::{LiquidityPool, PoolRegistry, Route};
 
 use portfolio::{Asset, LPPosition, Portfolio};
 pub use portfolio::{Badge, Metrics, Transaction};
 pub use rate_limit::{RateLimitStatus, RateLimiter};
 pub use tiers::UserTier;
 use trading::perform_swap;
+use analytics::{PortfolioAnalytics, TimeWindow, PerformanceMetrics, AssetAllocation, BenchmarkComparison, PeriodReturns};
+pub use analytics::{TimeWindow, PerformanceMetrics, AssetAllocation, BenchmarkComparison, PeriodReturns};
 
 use crate::errors::SwapTradeError;
 use crate::storage::{ADMIN_KEY, PAUSED_KEY};
@@ -61,9 +67,7 @@ pub fn set_admin(env: Env, new_admin: Address) -> Result<(), SwapTradeError> {
 }
 
 // Batch imports
-use batch::{
-    execute_batch_atomic, execute_batch_best_effort, BatchOperation, BatchResult,
-};
+use batch::{execute_batch_atomic, execute_batch_best_effort, BatchOperation, BatchResult};
 
 // Oracle imports
 use oracle::get_price_safe;
@@ -179,7 +183,14 @@ impl CounterContract {
         );
 
         portfolio.record_trade(&env, user.clone());
+
+        // Record daily portfolio value for analytics
+        portfolio.record_daily_portfolio_value(&env, user.clone(), env.ledger().timestamp());
+
         env.storage().instance().set(&(), &portfolio);
+
+        // Flush batched badge events
+        crate::events::Events::flush_badge_events(&env);
 
         // Optional structured logging for successful swap
         #[cfg(feature = "logging")]
@@ -193,15 +204,15 @@ impl CounterContract {
     }
 
     /// Non-panicking swap that counts failed orders and returns 0 on failure
-    pub fn try_swap(env: Env, from: Symbol, to: Symbol, amount: i128, user: Address) -> i128 {
+    pub fn safe_swap(env: Env, from: Symbol, to: Symbol, amount: i128, user: Address) -> i128 {
         let mut portfolio: Portfolio = env
             .storage()
             .instance()
             .get(&())
             .unwrap_or_else(|| Portfolio::new(&env));
 
-        let tokens_ok = (from == Symbol::short("XLM") || from == Symbol::short("USDCSIM"))
-            && (to == Symbol::short("XLM") || to == Symbol::short("USDCSIM"));
+        let tokens_ok = (from == symbol_short!("XLM") || from == symbol_short!("USDCSIM"))
+            && (to == symbol_short!("XLM") || to == symbol_short!("USDCSIM"));
         let pair_ok = from != to;
         let amount_ok = amount > 0;
 
@@ -213,10 +224,8 @@ impl CounterContract {
             #[cfg(feature = "logging")]
             {
                 use soroban_sdk::symbol_short;
-                env.events().publish(
-                    (symbol_short!("fail"), user.clone()),
-                    (from, to, amount),
-                );
+                env.events()
+                    .publish((symbol_short!("fail"), user.clone()), (from, to, amount));
             }
             return 0;
         }
@@ -224,6 +233,9 @@ impl CounterContract {
         let out_amount = perform_swap(&env, &mut portfolio, from, to, amount, user.clone());
         portfolio.record_trade(&env, user);
         env.storage().instance().set(&(), &portfolio);
+
+        // Flush batched badge events
+        crate::events::Events::flush_badge_events(&env);
 
         #[cfg(feature = "logging")]
         {
@@ -353,6 +365,7 @@ impl CounterContract {
         match result {
             Ok(res) => {
                 env.storage().instance().set(&(), &portfolio);
+                crate::events::Events::flush_badge_events(&env);
                 res
             }
             Err(_) => {
@@ -375,6 +388,7 @@ impl CounterContract {
         match result {
             Ok(res) => {
                 env.storage().instance().set(&(), &portfolio);
+                crate::events::Events::flush_badge_events(&env);
                 res
             }
             Err(_) => {
@@ -515,6 +529,9 @@ impl CounterContract {
 
         env.storage().instance().set(&(), &portfolio);
 
+        // Flush batched badge events
+        crate::events::Events::flush_badge_events(&env);
+
         lp_tokens_minted
     }
 
@@ -621,14 +638,76 @@ impl CounterContract {
         }
         result
     }
+
+    /// Get comprehensive performance metrics for a user
+    pub fn get_performance_metrics(
+        env: Env,
+        user: Address,
+        time_window: TimeWindow,
+    ) -> PerformanceMetrics {
+        let portfolio: Portfolio = env
+            .storage()
+            .instance()
+            .get(&())
+            .unwrap_or_else(|| Portfolio::new(&env));
+
+        PortfolioAnalytics::get_performance_metrics(&env, &portfolio, user, time_window)
+    }
+
+    /// Get asset allocation breakdown with correlation analysis
+    pub fn get_asset_allocation(env: Env, user: Address) -> AssetAllocation {
+        let portfolio: Portfolio = env
+            .storage()
+            .instance()
+            .get(&())
+            .unwrap_or_else(|| Portfolio::new(&env));
+
+        PortfolioAnalytics::get_asset_allocation(&env, &portfolio, user)
+    }
+
+    /// Compare portfolio performance against a benchmark
+    pub fn get_benchmark_comparison(
+        env: Env,
+        user: Address,
+        benchmark_id: Symbol,
+        time_window: TimeWindow,
+    ) -> BenchmarkComparison {
+        let portfolio: Portfolio = env
+            .storage()
+            .instance()
+            .get(&())
+            .unwrap_or_else(|| Portfolio::new(&env));
+
+        PortfolioAnalytics::get_benchmark_comparison(&env, &portfolio, user, benchmark_id, time_window)
+    }
+
+    /// Calculate period returns between timestamps
+    pub fn get_period_returns(
+        env: Env,
+        user: Address,
+        start_timestamp: u64,
+        end_timestamp: u64,
+    ) -> PeriodReturns {
+        let portfolio: Portfolio = env
+            .storage()
+            .instance()
+            .get(&())
+            .unwrap_or_else(|| Portfolio::new(&env));
+
+        PortfolioAnalytics::get_period_returns(&env, &portfolio, user, start_timestamp, end_timestamp)
+    }
 }
 
+#[cfg(test)]
+mod analytics_tests;
 #[cfg(test)]
 mod balance_test;
 #[cfg(test)]
 mod batch_tests;
 #[cfg(test)]
 mod enhanced_trading_tests; // NEW: Enhanced trading tests for better coverage
+#[cfg(test)]
+mod fuzz_tests;
 #[cfg(test)]
 mod lp_tests;
 mod migration_tests;
@@ -637,8 +716,6 @@ mod oracle_tests;
 #[cfg(test)]
 mod rate_limit_tests;
 #[cfg(test)]
-mod transaction_tests;
-#[cfg(test)]
-mod fuzz_tests; // NEW: Fuzz tests for security hardening
+mod transaction_tests; // NEW: Fuzz tests for security hardening
 
 // trading tests are provided as integration/unit tests in the repository tests/ folder

@@ -1,5 +1,5 @@
-use soroban_sdk::{contracttype, Address, Env, symbol_short};
 use crate::tiers::UserTier;
+use soroban_sdk::{contracttype, symbol_short, Address, Env};
 
 /// Rate limit configuration per tier
 #[contracttype]
@@ -100,7 +100,7 @@ impl RateLimiter {
         tier: &UserTier,
     ) -> Result<(), RateLimitStatus> {
         let config = RateLimitConfig::for_tier(tier);
-        
+
         // Unlimited for Whale tier with max u32 limit
         if config.swaps_per_hour == u32::MAX {
             return Ok(());
@@ -111,11 +111,7 @@ impl RateLimiter {
         let count_key = (user.clone(), symbol_short!("swap"), window.window_start);
 
         // Get current count
-        let current_count: u32 = env
-            .storage()
-            .persistent()
-            .get(&count_key)
-            .unwrap_or(0);
+        let current_count: u32 = env.storage().persistent().get(&count_key).unwrap_or(0);
 
         if current_count >= config.swaps_per_hour {
             return Err(RateLimitStatus {
@@ -133,11 +129,7 @@ impl RateLimiter {
         let window = TimeWindow::hourly(timestamp);
         let count_key = (user.clone(), symbol_short!("swap"), window.window_start);
 
-        let current_count: u32 = env
-            .storage()
-            .persistent()
-            .get(&count_key)
-            .unwrap_or(0);
+        let current_count: u32 = env.storage().persistent().get(&count_key).unwrap_or(0);
 
         env.storage()
             .persistent()
@@ -151,7 +143,7 @@ impl RateLimiter {
         tier: &UserTier,
     ) -> Result<(), RateLimitStatus> {
         let config = RateLimitConfig::for_tier(tier);
-        
+
         // Unlimited for Expert+ tiers with max u32 limit
         if config.lp_ops_per_day == u32::MAX {
             return Ok(());
@@ -161,11 +153,7 @@ impl RateLimiter {
         let window = TimeWindow::daily(timestamp);
         let count_key = (user.clone(), symbol_short!("lp_op"), window.window_start);
 
-        let current_count: u32 = env
-            .storage()
-            .persistent()
-            .get(&count_key)
-            .unwrap_or(0);
+        let current_count: u32 = env.storage().persistent().get(&count_key).unwrap_or(0);
 
         if current_count >= config.lp_ops_per_day {
             return Err(RateLimitStatus {
@@ -183,11 +171,7 @@ impl RateLimiter {
         let window = TimeWindow::daily(timestamp);
         let count_key = (user.clone(), symbol_short!("lp_op"), window.window_start);
 
-        let current_count: u32 = env
-            .storage()
-            .persistent()
-            .get(&count_key)
-            .unwrap_or(0);
+        let current_count: u32 = env.storage().persistent().get(&count_key).unwrap_or(0);
 
         env.storage()
             .persistent()
@@ -195,21 +179,13 @@ impl RateLimiter {
     }
 
     /// Get rate limit status for swaps
-    pub fn get_swap_status(
-        env: &Env,
-        user: &Address,
-        tier: &UserTier,
-    ) -> RateLimitStatus {
+    pub fn get_swap_status(env: &Env, user: &Address, tier: &UserTier) -> RateLimitStatus {
         let config = RateLimitConfig::for_tier(tier);
         let timestamp = env.ledger().timestamp();
         let window = TimeWindow::hourly(timestamp);
         let count_key = (user.clone(), symbol_short!("swap"), window.window_start);
 
-        let used: u32 = env
-            .storage()
-            .persistent()
-            .get(&count_key)
-            .unwrap_or(0);
+        let used: u32 = env.storage().persistent().get(&count_key).unwrap_or(0);
 
         RateLimitStatus {
             used,
@@ -219,21 +195,13 @@ impl RateLimiter {
     }
 
     /// Get rate limit status for LP operations
-    pub fn get_lp_status(
-        env: &Env,
-        user: &Address,
-        tier: &UserTier,
-    ) -> RateLimitStatus {
+    pub fn get_lp_status(env: &Env, user: &Address, tier: &UserTier) -> RateLimitStatus {
         let config = RateLimitConfig::for_tier(tier);
         let timestamp = env.ledger().timestamp();
         let window = TimeWindow::daily(timestamp);
         let count_key = (user.clone(), symbol_short!("lp_op"), window.window_start);
 
-        let used: u32 = env
-            .storage()
-            .persistent()
-            .get(&count_key)
-            .unwrap_or(0);
+        let used: u32 = env.storage().persistent().get(&count_key).unwrap_or(0);
 
         RateLimitStatus {
             used,

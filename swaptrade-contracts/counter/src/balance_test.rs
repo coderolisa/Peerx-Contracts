@@ -240,16 +240,25 @@ fn test_try_swap_counts_failed_orders_without_panic() {
     let usdc = symbol_short!("USDCSIM");
 
     // Fail: same token pair
-    let out_same = client.try_swap(&xlm, &xlm, &100, &user).expect("client.try_swap failed").expect("try_swap returned error");
+    let out_same = client
+        .try_swap(&xlm, &xlm, &100, &user)
+        .expect("client.try_swap failed")
+        .expect("try_swap returned error");
     assert_eq!(out_same, 0);
 
     // Fail: invalid token
     let btc = symbol_short!("BTC");
-    let out_bad_token = client.try_swap(&xlm, &btc, &100, &user).expect("client.try_swap failed").expect("try_swap returned error");
+    let out_bad_token = client
+        .try_swap(&xlm, &btc, &100, &user)
+        .expect("client.try_swap failed")
+        .expect("try_swap returned error");
     assert_eq!(out_bad_token, 0);
 
     // Fail: negative amount
-    let out_neg = client.try_swap(&xlm, &usdc, &-10, &user).expect("client.try_swap failed").expect("try_swap returned error");
+    let out_neg = client
+        .try_swap(&xlm, &usdc, &-10, &user)
+        .expect("client.try_swap failed")
+        .expect("try_swap returned error");
     assert_eq!(out_neg, 0);
 
     // Metrics reflect failed orders

@@ -1,7 +1,7 @@
 #![cfg(test)]
 
 use super::*;
-use crate::batch::{OperationResult, BatchOperation, BatchResult};
+use crate::batch::{BatchOperation, BatchResult, OperationResult};
 use soroban_sdk::{symbol_short, testutils::Address as TestAddress, Env, Symbol, Vec};
 
 // ===== BASIC BATCH OPERATION TESTS =====

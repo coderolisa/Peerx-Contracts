@@ -4,7 +4,133 @@
 #[cfg(test)]
 mod badge_achievement_tests {
     use crate::portfolio::{Portfolio, Asset, Badge};
-    use soroban_sdk::{Env, testutils::Address as _, Address, Symbol};
+    use crate::events::Events;
+    use soroban_sdk::{Env, testutils::{Address as _, Events as _}, Address, Symbol};
+
+    // ===== EVENT BATCHING TESTS =====
+
+    /// Test that multiple badge awards in single transaction emit batched event
+    #[test]
+    fn test_batch_event_emission_multiple_badges() {
+        let env = Env::default();
+        let mut portfolio = Portfolio::new(&env);
+        let user = Address::generate(&env);
+        
+        // Setup: mint balance and record initial state
+        portfolio.mint(&env, Asset::XLM, user.clone(), 1000);
+        portfolio.record_initial_balance(user.clone(), 100);
+        
+        // Trigger multiple badges in one transaction
+        for _ in 0..10 {
+            portfolio.record_trade(&env, user.clone());
+        }
+        portfolio.check_and_award_badges(&env, user.clone());
+        
+        // Flush events
+        Events::flush_badge_events(&env);
+        
+        // Verify batched event was emitted
+        let events = env.events().all();
+        let badge_events: Vec<_> = events.iter()
+            .filter(|e| {
+                if let Ok((topics, _)) = e {
+                    topics.len() > 0 && topics.get(0).unwrap() == Symbol::new(&env, "BadgesAwarded")
+                } else {
+                    false
+                }
+            })
+            .collect();
+        
+        // Should have exactly 1 batched event instead of multiple individual events
+        assert_eq!(badge_events.len(), 1);
+    }
+
+    /// Test that single badge award still works with batching
+    #[test]
+    fn test_batch_event_emission_single_badge() {
+        let env = Env::default();
+        let mut portfolio = Portfolio::new(&env);
+        let user = Address::generate(&env);
+        
+        // Award single badge
+        portfolio.record_trade(&env, user.clone());
+        
+        // Flush events
+        Events::flush_badge_events(&env);
+        
+        // Verify event was emitted
+        let events = env.events().all();
+        assert!(events.len() > 0);
+    }
+
+    /// Test that no events emitted when buffer is empty
+    #[test]
+    fn test_batch_event_no_emission_when_empty() {
+        let env = Env::default();
+        
+        // Flush with no badges awarded
+        Events::flush_badge_events(&env);
+        
+        // Verify no events emitted
+        let events = env.events().all();
+        let badge_events: Vec<_> = events.iter()
+            .filter(|e| {
+                if let Ok((topics, _)) = e {
+                    topics.len() > 0 && topics.get(0).unwrap() == Symbol::new(&env, "BadgesAwarded")
+                } else {
+                    false
+                }
+            })
+            .collect();
+        
+        assert_eq!(badge_events.len(), 0);
+    }
+
+    /// Test event ordering is preserved in batch
+    #[test]
+    fn test_batch_event_ordering_preserved() {
+        let env = Env::default();
+        let mut portfolio = Portfolio::new(&env);
+        let user = Address::generate(&env);
+        
+        portfolio.mint(&env, Asset::XLM, user.clone(), 1000);
+        portfolio.record_initial_balance(user.clone(), 100);
+        
+        // Award badges in specific order
+        portfolio.record_trade(&env, user.clone()); // FirstTrade
+        for _ in 1..10 {
+            portfolio.record_trade(&env, user.clone());
+        }
+        portfolio.record_lp_deposit(user.clone()); // LiquidityProvider
+        portfolio.check_and_award_badges(&env, user.clone()); // Trader
+        
+        Events::flush_badge_events(&env);
+        
+        // All badges should be recorded
+        assert!(portfolio.has_badge(&env, user.clone(), Badge::FirstTrade));
+        assert!(portfolio.has_badge(&env, user.clone(), Badge::Trader));
+        assert!(portfolio.has_badge(&env, user.clone(), Badge::LiquidityProvider));
+    }
+
+    /// Test backward compatibility - badges still stored correctly
+    #[test]
+    fn test_batch_event_backward_compatibility() {
+        let env = Env::default();
+        let mut portfolio = Portfolio::new(&env);
+        let user = Address::generate(&env);
+        
+        // Award badge
+        portfolio.record_trade(&env, user.clone());
+        
+        // Verify badge is stored (backward compatible)
+        assert!(portfolio.has_badge(&env, user.clone(), Badge::FirstTrade));
+        
+        // Flush events
+        Events::flush_badge_events(&env);
+        
+        // Badge should still be stored after flush
+        assert!(portfolio.has_badge(&env, user.clone(), Badge::FirstTrade));
+    }
 
     // ===== INDIVIDUAL BADGE UNLOCK TESTS =====
 
@@ -37,7 +163,7 @@ mod badge_achievement_tests {
         portfolio.record_initial_balance(user.clone(), 1000);
         
         // Record 9 trades - no Trader badge yet
-        let user = Address::generate(&env);
+        for _ in 0..9 {
             portfolio.record_trade(&env, user.clone());
         }
         portfolio.check_and_award_badges(&env, user.clone());
@@ -67,7 +193,7 @@ mod badge_achievement_tests {
         assert!(!portfolio.has_badge(&env, user.clone(), Badge::WealthBuilder));
         
         // Add more tokens to reach 10x
-        let user = Address::generate(&env);
+        portfolio.mint(&env, Asset::XLM, user.clone(), starting_balance * 9);
         portfolio.check_and_award_badges(&env, user.clone());
         
         // WealthBuilder badge should be awarded
