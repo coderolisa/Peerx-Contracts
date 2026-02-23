@@ -62,6 +62,10 @@ pub struct Portfolio {
     total_lp_tokens: i128,                 // total LP tokens minted (for share calculations)
     lp_fees_accumulated: i128,            // accumulated fees for LP distribution
     pub migration_time: Option<u64>,           // Timestamp when V2 migration occurred
+
+    // Time-series Analytics Data
+    daily_portfolio_values: Map<(Address, u64), i128>, // (user, date) -> portfolio value
+    last_update_timestamp: Map<Address, u64>,          // last time portfolio was recorded
 }
 
 #[derive(Clone, Debug, PartialEq)] // Added derives for testing
@@ -109,6 +113,8 @@ impl Portfolio {
             total_lp_tokens: 0,
             lp_fees_accumulated: 0,
             migration_time: None,
+            daily_portfolio_values: Map::new(env),
+            last_update_timestamp: Map::new(env),
         }
     }
 
@@ -231,7 +237,7 @@ impl Portfolio {
     /// Award a badge to a user if they don't already have it.
     /// Returns true if badge was awarded, false if user already had it.
     pub fn award_badge(&mut self, env: &Env, user: Address, badge: Badge) -> bool {
-        let key = (user, badge);
+        let key = (user.clone(), badge.clone());
 
         // Check if user already has this badge
         if self.has_badge(env, key.0.clone(), key.1.clone()) {
@@ -240,6 +246,9 @@ impl Portfolio {
 
         // Award the badge
     self.badges.set(key, true);
+        
+        // Buffer event instead of emitting immediately
+        crate::events::Events::badge_awarded(env, user, badge, env.ledger().timestamp() as i64);
         true
     }
 
@@ -291,6 +300,53 @@ impl Portfolio {
     /// Increment failed order counter
     pub fn inc_failed_order(&mut self) {
         self.metrics.failed_orders = self.metrics.failed_orders.saturating_add(1);
+    }
+
+    /// Record daily portfolio value for analytics
+    /// Should be called daily to maintain time-series data
+    pub fn record_daily_portfolio_value(&mut self, env: &Env, user: Address, timestamp: u64) {
+        let current_value = self.get_total_portfolio_value(env, user.clone());
+        let date_key = timestamp / 86400; // Convert to days since epoch
+
+        let key = (user.clone(), date_key);
+        self.daily_portfolio_values.set(key, current_value);
+        self.last_update_timestamp.set(user, timestamp);
+    }
+
+    /// Get total portfolio value across all assets for a user
+    pub fn get_total_portfolio_value(&self, env: &Env, user: Address) -> i128 {
+        // Sum all asset balances (simplified - in real implementation would use current prices)
+        let xlm_balance = self.balance_of(env, Asset::XLM, user.clone());
+        let usdc_balance = self.balance_of(env, Asset::Custom(symbol_short!("USDCSIM")), user);
+        xlm_balance + usdc_balance
+    }
+
+    /// Get historical portfolio values for a user within a time range
+    pub fn get_portfolio_values_in_range(
+        &self,
+        env: &Env,
+        user: Address,
+        start_date: u64,
+        end_date: u64,
+    ) -> Vec<i128> {
+        let mut values = Vec::new(env);
+
+        for date in start_date..=end_date {
+            let key = (user.clone(), date);
+            if let Some(value) = self.daily_portfolio_values.get(key) {
+                values.push_back(value);
+            }
+        }
+
+        values
+    }
+
+    /// Get the last recorded portfolio value for a user
+    pub fn get_last_portfolio_value(&self, env: &Env, user: Address) -> Option<i128> {
+        let last_timestamp = self.last_update_timestamp.get(user.clone())?;
+        let date_key = last_timestamp / 86400;
+        let key = (user, date_key);
+        self.daily_portfolio_values.get(key)
     }
 
     // ===== BADGE & ACHIEVEMENT SYSTEM =====

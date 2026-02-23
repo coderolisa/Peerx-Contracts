@@ -213,3 +213,35 @@ fn test_per_pair_tolerance_config() {
     client.set_price(&pair, &change_03pct);
     assert_eq!(client.get_current_price(&pair), change_03pct);
 }
+
+#[test]
+fn test_register_and_get_consensus_price() {
+    let mut oracle = DecentralizedOracle::new();
+
+    let feed1 = MockFeedProvider::new(vec![(("XLM", "USD"), 500, 1)]);
+    let feed2 = MockFeedProvider::new(vec![(("XLM", "USD"), 505, 1)]);
+    let feed3 = MockFeedProvider::new(vec![(("XLM", "USD"), 495, 1)]);
+
+    oracle.register_feed(feed1);
+    oracle.register_feed(feed2);
+    oracle.register_feed(feed3);
+
+    let consensus_price = oracle.get_consensus_price(("XLM", "USD"));
+    assert_eq!(consensus_price, Some(500));
+}
+
+#[test]
+fn test_anomaly_detection() {
+    let mut oracle = DecentralizedOracle::new();
+
+    let feed1 = MockFeedProvider::new(vec![(("XLM", "USD"), 500, 1)]);
+    let feed2 = MockFeedProvider::new(vec![(("XLM", "USD"), 1000, 1)]);
+    let feed3 = MockFeedProvider::new(vec![(("XLM", "USD"), 495, 1)]);
+
+    oracle.register_feed(feed1);
+    oracle.register_feed(feed2);
+    oracle.register_feed(feed3);
+
+    let anomalies = oracle.detect_anomalies(("XLM", "USD"));
+    assert_eq!(anomalies, vec![1]);
+}
