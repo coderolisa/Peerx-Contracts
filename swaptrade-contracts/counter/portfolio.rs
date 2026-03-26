@@ -89,6 +89,21 @@ pub struct LPPosition {
     pub lp_tokens_minted: i128,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+#[contracttype]
+pub struct CachedPortfolio {
+    pub trades: u32,
+    pub pnl: i128,
+    pub cached_at: u64,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+#[contracttype]
+pub struct CachedTopTraders {
+    pub traders: Vec<(Address, i128)>,
+    pub cached_at: u64,
+}
+
 impl Portfolio {
     pub fn new(env: &Env) -> Self {
         Self {

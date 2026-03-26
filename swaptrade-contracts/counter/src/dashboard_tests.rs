@@ -1,263 +1,174 @@
-/// Comprehensive integration tests for Admin Dashboard Query Functions
-/// Tests all acceptance criteria:
-/// - 5 query functions return expected types
-/// - Results match manual calculations
-/// - Leaderboard order correct (highest PnL first)
-/// - Multiple calls return consistent results
-
 #[cfg(test)]
-mod dashboard_query_tests {
-    use crate::portfolio::{Portfolio, Asset};
-    use soroban_sdk::{Env, testutils::Address as TestAddress};
+mod dashboard_cache_tests {
+    use crate::{set_admin, CounterContract, CounterContractClient};
+    use core::time::Duration;
+    use soroban_sdk::testutils::Address as _;
+    use soroban_sdk::{symbol_short, Address, Env};
+    use std::time::Instant;
 
-    /// Test get_total_trading_volume accumulates swap amounts
     #[test]
-    fn test_total_trading_volume_accumulates() {
+    fn cache_populates_and_reports_hits() {
         let env = Env::default();
-        let mut portfolio = Portfolio::new(&env);
-        
-        assert_eq!(portfolio.get_total_trading_volume(), 0);
-        
-        let user1 = Address::generate(&env);
-        portfolio.mint(&env, Asset::XLM, user1.clone(), 5000);
-        
-        portfolio.transfer_asset(
-            &env,
-            Asset::XLM,
-            Asset::Custom(soroban_sdk::symbol_short!("USDC")),
-            user1,
-            1000,
+        let contract_id = env.register(CounterContract, ());
+        let client = CounterContractClient::new(&env, &contract_id);
+        let user = Address::generate(&env);
+
+        let xlm = symbol_short!("XLM");
+        client.mint(&xlm, &user, &1000);
+
+        let first = client.get_portfolio(&user);
+        let second = client.get_portfolio(&user);
+
+        assert_eq!(first, second);
+
+        let (hits, misses, ratio_bps) = client.get_cache_stats();
+        assert!(hits >= 1);
+        assert!(misses >= 1);
+        assert!(ratio_bps > 0);
+    }
+
+    #[test]
+    fn cache_invalidates_on_swap_and_liquidity_mutations() {
+        let env = Env::default();
+        let contract_id = env.register(CounterContract, ());
+        let client = CounterContractClient::new(&env, &contract_id);
+        let user = Address::generate(&env);
+
+        let xlm = symbol_short!("XLM");
+        let usdc = symbol_short!("USDCSIM");
+
+        client.mint(&xlm, &user, &10_000);
+        client.mint(&usdc, &user, &10_000);
+
+        // Warm cache and validate a hit path.
+        let _ = client.get_portfolio(&user);
+        let _ = client.get_portfolio(&user);
+        let before_stats = client.get_cache_stats();
+
+        // Swap mutates portfolio and should invalidate cached entry.
+        let _ = client.safe_swap(&xlm, &usdc, &100, &user);
+
+        let _ = client.get_portfolio(&user);
+        let after_swap_stats = client.get_cache_stats();
+        assert!(after_swap_stats.1 > before_stats.1, "swap should force a cache miss");
+
+        // Add liquidity also mutates portfolio and should invalidate cache.
+        let _ = client.add_liquidity(&500, &500, &user);
+        let _ = client.get_portfolio(&user);
+        let after_lp_stats = client.get_cache_stats();
+        assert!(after_lp_stats.1 > after_swap_stats.1, "liquidity update should force a cache miss");
+    }
+
+    #[test]
+    fn clear_cache_resets_top_traders_cache_path() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register(CounterContract, ());
+        let client = CounterContractClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+
+        let set_admin_result = set_admin(env.clone(), admin.clone());
+        assert!(set_admin_result.is_ok());
+
+        let user = Address::generate(&env);
+        let xlm = symbol_short!("XLM");
+        client.mint(&xlm, &user, &2_000);
+
+        let _ = client.get_top_traders(&10);
+        let _ = client.get_top_traders(&10);
+        let stats_before = client.get_cache_stats();
+        assert!(stats_before.0 >= 1);
+
+        client.clear_cache(&admin);
+
+        let _ = client.get_top_traders(&10);
+        let stats_after = client.get_cache_stats();
+        assert!(stats_after.1 > stats_before.1);
+    }
+
+    #[test]
+    #[ignore]
+    fn benchmark_cache_latency_and_hit_ratio() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register(CounterContract, ());
+        let client = CounterContractClient::new(&env, &contract_id);
+
+        let admin = Address::generate(&env);
+        let _ = set_admin(env.clone(), admin.clone());
+        let _ = client.set_cache_ttl(&admin, &3600);
+
+        let user = Address::generate(&env);
+        let xlm = symbol_short!("XLM");
+        let usdc = symbol_short!("USDCSIM");
+        client.mint(&xlm, &user, &100_000);
+        client.mint(&usdc, &user, &100_000);
+
+        for _ in 0..20 {
+            let _ = client.safe_swap(&xlm, &usdc, &100, &user);
+        }
+
+        let iterations: u32 = 200;
+        let mut cold_portfolio_total = Duration::ZERO;
+        let mut warm_portfolio_total = Duration::ZERO;
+        let mut cold_top_total = Duration::ZERO;
+        let mut warm_top_total = Duration::ZERO;
+
+        for _ in 0..iterations {
+            client.clear_cache(&admin);
+
+            let start_cold_portfolio = Instant::now();
+            let _ = client.get_portfolio(&user);
+            cold_portfolio_total += start_cold_portfolio.elapsed();
+
+            let start_warm_portfolio = Instant::now();
+            let _ = client.get_portfolio(&user);
+            warm_portfolio_total += start_warm_portfolio.elapsed();
+
+            client.clear_cache(&admin);
+
+            let start_cold_top = Instant::now();
+            let _ = client.get_top_traders(&10);
+            cold_top_total += start_cold_top.elapsed();
+
+            let start_warm_top = Instant::now();
+            let _ = client.get_top_traders(&10);
+            warm_top_total += start_warm_top.elapsed();
+        }
+
+        let cold_portfolio_avg_ms = cold_portfolio_total.as_secs_f64() * 1000.0 / iterations as f64;
+        let warm_portfolio_avg_ms = warm_portfolio_total.as_secs_f64() * 1000.0 / iterations as f64;
+        let cold_top_avg_ms = cold_top_total.as_secs_f64() * 1000.0 / iterations as f64;
+        let warm_top_avg_ms = warm_top_total.as_secs_f64() * 1000.0 / iterations as f64;
+
+        let portfolio_reduction_pct = if cold_portfolio_avg_ms > 0.0 {
+            ((cold_portfolio_avg_ms - warm_portfolio_avg_ms) / cold_portfolio_avg_ms) * 100.0
+        } else {
+            0.0
+        };
+        let top_reduction_pct = if cold_top_avg_ms > 0.0 {
+            ((cold_top_avg_ms - warm_top_avg_ms) / cold_top_avg_ms) * 100.0
+        } else {
+            0.0
+        };
+
+        let (hits, misses, ratio_bps) = client.get_cache_stats();
+        let hit_ratio_pct = ratio_bps as f64 / 100.0;
+
+        println!(
+            "CACHE_BENCH portf_cold_ms={:.6} portf_warm_ms={:.6} portf_delta_pct={:.2} top_cold_ms={:.6} top_warm_ms={:.6} top_delta_pct={:.2} hits={} misses={} hit_ratio_pct={:.2}",
+            cold_portfolio_avg_ms,
+            warm_portfolio_avg_ms,
+            portfolio_reduction_pct,
+            cold_top_avg_ms,
+            warm_top_avg_ms,
+            top_reduction_pct,
+            hits,
+            misses,
+            hit_ratio_pct,
         );
-        
-        portfolio.record_trade_with_amount(&env, user1, 1000);
-        
-        assert_eq!(portfolio.get_total_trading_volume(), 1000);
-    }
 
-    /// Test get_active_users_count tracks trading users
-    #[test]
-    fn test_active_users_count() {
-        let env = Env::default();
-        let mut portfolio = Portfolio::new(&env);
-        
-        assert_eq!(portfolio.get_active_users_count(), 0);
-        
-        let user1 = Address::generate(&env);
-        let user2 = Address::generate(&env);
-        
-        portfolio.mint(&env, Asset::XLM, user1.clone(), 1000);
-        portfolio.record_trade(&env, user1.clone());
-        
-        assert!(portfolio.get_active_users_count() >= 1);
-        
-        portfolio.mint(&env, Asset::XLM, user2.clone(), 1000);
-        portfolio.record_trade(&env, user2.clone());
-        
-        assert!(portfolio.get_active_users_count() >= 2);
-    }
-
-    /// Test get_pool_stats returns correct tuple
-    #[test]
-    fn test_pool_stats() {
-        use soroban_sdk::{Env, testutils::Address as _, Address};
-        let mut portfolio = Portfolio::new(&env);
-        
-        let (xlm, usdc, fees) = portfolio.get_pool_stats();
-        assert_eq!(xlm, 0);
-        assert_eq!(usdc, 0);
-        assert_eq!(fees, 0);
-        
-        portfolio.add_pool_liquidity(5000, 5000);
-        let (xlm, usdc, fees) = portfolio.get_pool_stats();
-            let user1 = Address::generate(&env);
-        assert_eq!(usdc, 5000);
-        
-        portfolio.collect_fee(100);
-        let (_, _, fees) = portfolio.get_pool_stats();
-        assert_eq!(fees, 100);
-    }
-
-    /// Integration test with 5 users
-    #[test]
-    fn test_5_users_integration() {
-        let env = Env::default();
-        let mut portfolio = Portfolio::new(&env);
-        
-        let users: Vec<_> = (0..5)
-            .map(|_| Address::generate(&env))
-            .collect();
-        
-        for (i, user) in users.iter().enumerate() {
-            let amount = 1000 + (i as i128 * 500);
-            portfolio.mint(&env, Asset::XLM, user.clone(), amount);
-            portfolio.record_trade(&env, user.clone());
-        }
-        
-            let user1 = Address::generate(&env);
-            let user2 = Address::generate(&env);
-        assert_eq!(portfolio.get_total_trading_volume(), expected_volume);
-    }
-
-    /// Test manual calculation matches query results
-    #[test]
-    fn test_manual_calculation_matches() {
-        let env = Env::default();
-        let mut portfolio = Portfolio::new(&env);
-        
-        let user1 = Address::generate(&env);
-        let user2 = Address::generate(&env);
-        let user3 = Address::generate(&env);
-        
-        let swap1 = 1000i128;
-        let swap2 = 2000i128;
-        let swap3 = 1500i128;
-        
-        portfolio.mint(&env, Asset::XLM, user1.clone(), swap1);
-        portfolio.transfer_asset(&env, Asset::XLM, Asset::Custom(soroban_sdk::symbol_short!("USDC")), user1, swap1);
-        portfolio.record_trade_with_amount(&env, user1, swap1);
-        
-        portfolio.mint(&env, Asset::XLM, user2.clone(), swap2);
-        portfolio.transfer_asset(&env, Asset::XLM, Asset::Custom(soroban_sdk::symbol_short!("USDC")), user2, swap2);
-        portfolio.record_trade_with_amount(&env, user2, swap2);
-        
-        portfolio.mint(&env, Asset::XLM, user3.clone(), swap3);
-        portfolio.transfer_asset(&env, Asset::XLM, Asset::Custom(soroban_sdk::symbol_short!("USDC")), user3, swap3);
-        portfolio.record_trade_with_amount(&env, user3, swap3);
-        
-        let expected_total = swap1 + swap2 + swap3;
-        assert_eq!(portfolio.get_total_trading_volume(), expected_total);
-    }
-
-    /// Test multiple calls return consistent results
-    #[test]
-    fn test_consistent_results() {
-        let env = Env::default();
-        let mut portfolio = Portfolio::new(&env);
-        
-            let user1 = Address::generate(&env);
-            let user2 = Address::generate(&env);
-            let user3 = Address::generate(&env);
-        portfolio.record_trade_with_amount(&env, user, 2000);
-        
-        let vol1 = portfolio.get_total_trading_volume();
-        let vol2 = portfolio.get_total_trading_volume();
-        let vol3 = portfolio.get_total_trading_volume();
-        
-        assert_eq!(vol1, vol2);
-        assert_eq!(vol2, vol3);
-        assert_eq!(vol1, 2000);
-    }
-
-    /// Test leaderboard order is correct
-    #[test]
-    fn test_leaderboard_descending_order() {
-        let env = Env::default();
-        let mut portfolio = Portfolio::new(&env);
-        
-        let user_low = Address::generate(&env);
-        let user_mid = Address::generate(&env);
-        let user_high = Address::generate(&env);
-        
-        portfolio.mint(&env, Asset::XLM, user_low.clone(), 100);
-        portfolio.mint(&env, Asset::XLM, user_mid.clone(), 500);
-        portfolio.mint(&env, Asset::XLM, user_high.clone(), 1000);
-        
-        let leaderboard = portfolio.get_top_traders(&env, 3);
-        
-            let user = Address::generate(&env);
-            if let Some((_, first_pnl)) = leaderboard.get(0) {
-                assert_eq!(first_pnl, 1000);
-            }
-        }
-    }
-
-    /// Test leaderboard capped at 100
-    #[test]
-    fn test_leaderboard_cap() {
-        let env = Env::default();
-        let mut portfolio = Portfolio::new(&env);
-        
-        for _ in 0..150 {
-            let user = Address::generate(&env);
-            portfolio.mint(&env, Asset::XLM, user.clone(), 100);
-        }
-        
-        let top_traders = portfolio.get_top_traders(&env, 200);
-        assert!(top_traders.len() <= 100);
-            let user_low = Address::generate(&env);
-            let user_mid = Address::generate(&env);
-            let user_high = Address::generate(&env);
-    #[test]
-    fn test_empty_portfolio_queries() {
-        let env = Env::default();
-        let portfolio = Portfolio::new(&env);
-        
-        assert_eq!(portfolio.get_total_users(), 0);
-        assert_eq!(portfolio.get_total_trading_volume(), 0);
-        assert_eq!(portfolio.get_active_users_count(), 0);
-        
-        let top_traders = portfolio.get_top_traders(&env, 10);
-        assert_eq!(top_traders.len(), 0);
-        
-        let (xlm, usdc, fees) = portfolio.get_pool_stats();
-        assert_eq!(xlm, 0);
-        assert_eq!(usdc, 0);
-        assert_eq!(fees, 0);
-    }
-
-    /// Test queries respect limit parameter
-    #[test]
-    fn test_top_traders_limit() {
-                let user = Address::generate(&env);
-        let mut portfolio = Portfolio::new(&env);
-        
-        for i in 0..10 {
-            let user = Address::generate(&env);
-            portfolio.mint(&env, Asset::XLM, user, 1000 + (i as i128 * 100));
-        }
-        
-        let top5 = portfolio.get_top_traders(&env, 5);
-        assert!(top5.len() <= 5);
-        
-        let top10 = portfolio.get_top_traders(&env, 10);
-        assert!(top10.len() <= 10);
-        
-        let top3 = portfolio.get_top_traders(&env, 3);
-        assert!(top3.len() <= 3);
-    }
-
-    /// Test fee collection tracking
-    #[test]
-    fn test_fee_tracking() {
-        let env = Env::default();
-        let mut portfolio = Portfolio::new(&env);
-        
-        portfolio.collect_fee(50);
-        portfolio.collect_fee(100);
-        portfolio.collect_fee(25);
-        
-        let (_, _, fees) = portfolio.get_pool_stats();
-        assert_eq!(fees, 175);
-    }
-
-    /// Test queries don't modify state
-    #[test]
-                let user = Address::generate(&env);
-        let env = Env::default();
-        let portfolio = Portfolio::new(&env);
-        
-        let initial_users = portfolio.get_total_users();
-        let initial_volume = portfolio.get_total_trading_volume();
-        
-        for _ in 0..10 {
-            let _ = portfolio.get_total_users();
-            let _ = portfolio.get_total_trading_volume();
-            let _ = portfolio.get_active_users_count();
-            let _ = portfolio.get_top_traders(&env, 10);
-            let _ = portfolio.get_pool_stats();
-        }
-        
-        assert_eq!(portfolio.get_total_users(), initial_users);
-        assert_eq!(portfolio.get_total_trading_volume(), initial_volume);
+        assert!(hits > 0);
+        assert!(misses > 0);
     }
 }

@@ -1,5 +1,5 @@
 #![cfg_attr(not(test), no_std)]
-use soroban_sdk::{contract, contractimpl, symbol_short, Address, Env, Symbol, Vec};
+use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, Address, Env, Map, Symbol, Vec};
 
 // Bring in modules from parent directory
 mod admin;
@@ -36,7 +36,7 @@ mod analytics;
 pub use invariants::verify_contract_invariants;
 pub use liquidity_pool::{LiquidityPool, PoolRegistry, Route};
 
-use portfolio::{Asset, LPPosition, Portfolio};
+use portfolio::{Asset, CachedPortfolio, CachedTopTraders, LPPosition, Portfolio};
 pub use portfolio::{Badge, Metrics, Transaction};
 pub use rate_limit::{RateLimitStatus, RateLimiter};
 pub use tiers::UserTier;
@@ -72,6 +72,79 @@ use batch::{execute_batch_atomic, execute_batch_best_effort, BatchOperation, Bat
 // Oracle imports
 use oracle::{get_stored_price, set_stored_price};
 pub const CONTRACT_VERSION: u32 = 1;
+
+const PORTFOLIO_CACHE_KEY: Symbol = symbol_short!("pcache");
+const TOP_TRADERS_CACHE_KEY: Symbol = symbol_short!("tcache");
+const CACHE_TTL_KEY: Symbol = symbol_short!("cttl");
+const CACHE_HITS_KEY: Symbol = symbol_short!("chits");
+const CACHE_MISSES_KEY: Symbol = symbol_short!("cmiss");
+const DEFAULT_CACHE_TTL_SECONDS: u64 = 60;
+
+#[derive(Clone)]
+#[contracttype]
+struct CacheHitMetrics {
+    hits: u64,
+    misses: u64,
+    ratio_bps: u32,
+}
+
+fn get_cache_ttl(env: &Env) -> u64 {
+    env.storage()
+        .instance()
+        .get(&CACHE_TTL_KEY)
+        .unwrap_or(DEFAULT_CACHE_TTL_SECONDS)
+}
+
+fn cache_ratio_bps(hits: u64, misses: u64) -> u32 {
+    let total = hits.saturating_add(misses);
+    if total == 0 {
+        return 0;
+    }
+    ((hits.saturating_mul(10_000)) / total) as u32
+}
+
+fn record_cache_access(env: &Env, query: Symbol, hit: bool) {
+    let mut hits: u64 = env.storage().instance().get(&CACHE_HITS_KEY).unwrap_or(0);
+    let mut misses: u64 = env.storage().instance().get(&CACHE_MISSES_KEY).unwrap_or(0);
+
+    if hit {
+        hits = hits.saturating_add(1);
+        env.storage().instance().set(&CACHE_HITS_KEY, &hits);
+    } else {
+        misses = misses.saturating_add(1);
+        env.storage().instance().set(&CACHE_MISSES_KEY, &misses);
+    }
+
+    let payload = CacheHitMetrics {
+        hits,
+        misses,
+        ratio_bps: cache_ratio_bps(hits, misses),
+    };
+    env.events().publish((symbol_short!("cache"), query), payload);
+}
+
+fn invalidate_query_cache(env: &Env) {
+    env.storage().instance().remove(&PORTFOLIO_CACHE_KEY);
+    env.storage().instance().remove(&TOP_TRADERS_CACHE_KEY);
+}
+
+fn apply_trader_limit(env: &Env, traders: Vec<(Address, i128)>, limit: u32) -> Vec<(Address, i128)> {
+    let max_limit = if limit > 100 { 100 } else { limit };
+    let mut result = Vec::new(env);
+    let len = traders.len() as usize;
+    let cap = if len < max_limit as usize {
+        len
+    } else {
+        max_limit as usize
+    };
+
+    for i in 0..cap {
+        if let Some(entry) = traders.get(i as u32) {
+            result.push_back(entry);
+        }
+    }
+    result
+}
 
 #[contract]
 pub struct CounterContract;
@@ -114,6 +187,7 @@ impl CounterContract {
         portfolio.mint(&env, asset, to, amount);
 
         env.storage().instance().set(&(), &portfolio);
+        invalidate_query_cache(&env);
     }
 
     pub fn balance_of(env: Env, token: Symbol, user: Address) -> i128 {
@@ -188,6 +262,7 @@ impl CounterContract {
         portfolio.record_daily_portfolio_value(&env, user.clone(), env.ledger().timestamp());
 
         env.storage().instance().set(&(), &portfolio);
+        invalidate_query_cache(&env);
 
         // Flush batched badge events
         crate::events::Events::flush_badge_events(&env);
@@ -220,6 +295,7 @@ impl CounterContract {
             // Count failed order
             portfolio.inc_failed_order();
             env.storage().instance().set(&(), &portfolio);
+            invalidate_query_cache(&env);
 
             #[cfg(feature = "logging")]
             {
@@ -233,6 +309,7 @@ impl CounterContract {
         let out_amount = perform_swap(&env, &mut portfolio, from, to, amount, user.clone());
         portfolio.record_trade(&env, user);
         env.storage().instance().set(&(), &portfolio);
+        invalidate_query_cache(&env);
 
         // Flush batched badge events
         crate::events::Events::flush_badge_events(&env);
@@ -258,17 +335,111 @@ impl CounterContract {
         portfolio.record_trade(&env, user);
 
         env.storage().instance().set(&(), &portfolio);
+        invalidate_query_cache(&env);
     }
 
     /// Get portfolio stats for a user (trade count, pnl)
     pub fn get_portfolio(env: Env, user: Address) -> (u32, i128) {
+        let now = env.ledger().timestamp();
+        let ttl = get_cache_ttl(&env);
+
+        let portfolio_cache: Map<Address, CachedPortfolio> = env
+            .storage()
+            .instance()
+            .get(&PORTFOLIO_CACHE_KEY)
+            .unwrap_or_else(|| Map::new(&env));
+
+        if let Some(entry) = portfolio_cache.get(user.clone()) {
+            if now.saturating_sub(entry.cached_at) <= ttl {
+                record_cache_access(&env, symbol_short!("portf"), true);
+                return (entry.trades, entry.pnl);
+            }
+        }
+
+        record_cache_access(&env, symbol_short!("portf"), false);
         let portfolio: Portfolio = env
             .storage()
             .instance()
             .get(&())
             .unwrap_or_else(|| Portfolio::new(&env));
 
-        portfolio.get_portfolio(&env, user)
+        let value = portfolio.get_portfolio(&env, user.clone());
+        let mut updated_cache: Map<Address, CachedPortfolio> = env
+            .storage()
+            .instance()
+            .get(&PORTFOLIO_CACHE_KEY)
+            .unwrap_or_else(|| Map::new(&env));
+        updated_cache.set(
+            user,
+            CachedPortfolio {
+                trades: value.0,
+                pnl: value.1,
+                cached_at: now,
+            },
+        );
+        env.storage()
+            .instance()
+            .set(&PORTFOLIO_CACHE_KEY, &updated_cache);
+
+        value
+    }
+
+    /// Get top traders with instance-storage caching.
+    pub fn get_top_traders(env: Env, limit: u32) -> Vec<(Address, i128)> {
+        let now = env.ledger().timestamp();
+        let ttl = get_cache_ttl(&env);
+
+        if let Some(entry) = env
+            .storage()
+            .instance()
+            .get::<_, CachedTopTraders>(&TOP_TRADERS_CACHE_KEY)
+        {
+            if now.saturating_sub(entry.cached_at) <= ttl {
+                record_cache_access(&env, symbol_short!("toptr"), true);
+                return apply_trader_limit(&env, entry.traders, limit);
+            }
+        }
+
+        record_cache_access(&env, symbol_short!("toptr"), false);
+        let portfolio: Portfolio = env
+            .storage()
+            .instance()
+            .get(&())
+            .unwrap_or_else(|| Portfolio::new(&env));
+
+        let traders = portfolio.get_top_traders(&env, 100);
+        env.storage().instance().set(
+            &TOP_TRADERS_CACHE_KEY,
+            &CachedTopTraders {
+                traders: traders.clone(),
+                cached_at: now,
+            },
+        );
+
+        apply_trader_limit(&env, traders, limit)
+    }
+
+    /// Update cache TTL in seconds (admin only).
+    pub fn set_cache_ttl(env: Env, caller: Address, ttl_seconds: u64) -> Result<(), SwapTradeError> {
+        caller.require_auth();
+        crate::admin::require_admin(&env, &caller)?;
+        env.storage().instance().set(&CACHE_TTL_KEY, &ttl_seconds);
+        Ok(())
+    }
+
+    /// Get cache stats as (hits, misses, hit_ratio_bps).
+    pub fn get_cache_stats(env: Env) -> (u64, u64, u32) {
+        let hits: u64 = env.storage().instance().get(&CACHE_HITS_KEY).unwrap_or(0);
+        let misses: u64 = env.storage().instance().get(&CACHE_MISSES_KEY).unwrap_or(0);
+        (hits, misses, cache_ratio_bps(hits, misses))
+    }
+
+    /// Clear all query caches (admin only).
+    pub fn clear_cache(env: Env, caller: Address) -> Result<(), SwapTradeError> {
+        caller.require_auth();
+        crate::admin::require_admin(&env, &caller)?;
+        invalidate_query_cache(&env);
+        Ok(())
     }
 
     /// Get aggregate metrics
@@ -528,6 +699,7 @@ impl CounterContract {
         RateLimiter::record_lp_op(&env, &user, env.ledger().timestamp());
 
         env.storage().instance().set(&(), &portfolio);
+        invalidate_query_cache(&env);
 
         // Flush batched badge events
         crate::events::Events::flush_badge_events(&env);
@@ -619,6 +791,7 @@ impl CounterContract {
         RateLimiter::record_lp_op(&env, &user, env.ledger().timestamp());
 
         env.storage().instance().set(&(), &portfolio);
+        invalidate_query_cache(&env);
 
         (xlm_amount, usdc_amount)
     }
@@ -735,6 +908,8 @@ mod batch_tests;
 mod enhanced_trading_tests; // NEW: Enhanced trading tests for better coverage
 #[cfg(test)]
 mod fuzz_tests;
+#[cfg(test)]
+mod dashboard_tests;
 #[cfg(test)]
 mod lp_tests;
 mod migration_tests;

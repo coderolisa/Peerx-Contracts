@@ -86,3 +86,18 @@ SwapTrade contracts support versioning and data migration to ensure historical d
 - **Change**: Added `migration_time` field to `Portfolio`.
 - **Migration Logic**: `migrate_from_v1_to_v2` checks if `migration_time` is missing and initializes it.
 - **Verification**: Version bumps to 2.
+
+## Cache Benchmarking
+
+Use the cache benchmark runner to measure query latency delta and cache hit-rate after enabling portfolio caching.
+
+```bash
+python3 scripts/benchmark_cache.py
+```
+
+What it measures:
+- `get_portfolio` cold vs warm average latency
+- `get_top_traders` cold vs warm average latency
+- Cache hits, misses, and hit ratio
+
+Internally it runs the ignored benchmark test `benchmark_cache_latency_and_hit_ratio` in release mode.
