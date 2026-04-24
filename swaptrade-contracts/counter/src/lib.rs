@@ -44,10 +44,18 @@ mod fee_adjustment_manager;
 #[cfg(test)]
 mod dynamic_fee_adjustment_tests;
 
+// Staking Bonus System
+mod staking_bonus;
+#[cfg(test)]
+mod staking_bonus_tests;
+
 // Re-export fee adjustment types
 pub use network_congestion::{CongestionLevel, CongestionTrend, NetworkMetrics, NetworkCongestionMonitor};
 pub use dynamic_fee_adjustment::{FeeAdjustmentConfig, FeeAdjustmentResult, DynamicFeeAdjustment, FeeImpact};
 pub use fee_history::{FeeHistoryEntry, FeeHistoryManager, FeeHistoryStats, AdjustmentReason};
+
+// Re-export staking bonus types
+pub use staking_bonus::{StakingBonusManager, StakeRecord, DistributionRecord, StakingBonusKey};
 pub use emergency_override::{EmergencyOverrideManager, EmergencyOverrideState, OverrideStatus, OverrideReason};
 pub use fee_adjustment_manager::FeeAdjustmentManager;
 
@@ -1069,6 +1077,96 @@ impl CounterContract {
             start_timestamp,
             end_timestamp,
         )
+    }
+
+    // ────────────────────────────────────────────────────────────────────────
+    // Staking Bonus System  
+    // ────────────────────────────────────────────────────────────────────────
+
+    /// Stake tokens for a specified duration to earn bonuses
+    /// Supports: 30, 60, 90, or 365-day stakes
+    pub fn stake(env: Env, user: Address, amount: i128, duration_days: u32) -> u32 {
+        let manager = StakingBonusManager::new();
+        manager
+            .stake(&env, user, amount, duration_days)
+            .unwrap_or_else(|e| panic!("Staking failed: {}", e))
+    }
+
+    /// Claim earned staking bonuses (after 30-day holding period)
+    /// Returns total bonuses claimed
+    pub fn claim_staking_bonuses(env: Env, user: Address) -> i128 {
+        let manager = StakingBonusManager::new();
+        manager
+            .claim_bonuses(&env, user)
+            .unwrap_or_else(|e| panic!("Bonus claim failed: {}", e))
+    }
+
+    /// Claim staked principal after lock period expires
+    /// Returns the principal amount
+    pub fn claim_stake(env: Env, user: Address, stake_id: u32) -> i128 {
+        let manager = StakingBonusManager::new();
+        manager
+            .claim_stake(&env, user, stake_id)
+            .unwrap_or_else(|e| panic!("Stake claim failed: {}", e))
+    }
+
+    /// Unstake early before lock period (incurs 10% penalty)
+    /// Returns (principal_after_penalty, penalty_amount)
+    pub fn unstake_early(env: Env, user: Address, stake_id: u32) -> (i128, i128) {
+        let manager = StakingBonusManager::new();
+        manager
+            .unstake_early(&env, user, stake_id)
+            .unwrap_or_else(|e| panic!("Early unstake failed: {}", e))
+    }
+
+    /// Get all stake records for a user (transparent view)
+    pub fn get_user_stakes(env: Env, user: Address) -> Vec<StakeRecord> {
+        StakingBonusManager::get_user_stakes(&env, user)
+    }
+
+    /// Get specific stake details
+    pub fn get_stake_details(env: Env, user: Address, stake_id: u32) -> StakeRecord {
+        StakingBonusManager::get_stake_details(&env, user, stake_id)
+            .unwrap_or_else(|e| panic!("Cannot get stake details: {}", e))
+    }
+
+    /// Get total staked amount for a user
+    pub fn get_user_total_staked(env: Env, user: Address) -> i128 {
+        StakingBonusManager::get_user_total_staked(&env, user)
+    }
+
+    /// Get total earned bonuses for a user
+    pub fn get_user_earned_bonuses(env: Env, user: Address) -> i128 {
+        StakingBonusManager::get_user_earned_bonuses(&env, user)
+    }
+
+    /// Get total claimed bonuses for a user
+    pub fn get_user_claimed_bonuses(env: Env, user: Address) -> i128 {
+        StakingBonusManager::get_user_claimed_bonuses(&env, user)
+    }
+
+    /// Get pending claimable bonuses for a user (after 30-day holding period)
+    pub fn get_user_pending_bonuses(env: Env, user: Address) -> i128 {
+        StakingBonusManager::get_user_pending_bonuses(&env, user)
+    }
+
+    /// Get global staking statistics (transparency)
+    /// Returns (total_staked, total_distributed, distribution_records_count)
+    pub fn get_staking_statistics(env: Env) -> (i128, i128, u64) {
+        StakingBonusManager::get_statistics(&env)
+    }
+
+    /// Get distribution history for auditing
+    pub fn get_distribution_history(env: Env) -> Vec<DistributionRecord> {
+        StakingBonusManager::get_distribution_history(&env)
+    }
+
+    /// Execute periodic bonus distribution (admin only typically)
+    pub fn execute_staking_distribution(env: Env) -> DistributionRecord {
+        let manager = StakingBonusManager::new();
+        manager
+            .execute_distribution(&env)
+            .unwrap_or_else(|e| panic!("Distribution failed: {}", e))
     }
 }
 
