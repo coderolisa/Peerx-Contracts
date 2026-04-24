@@ -44,10 +44,18 @@ mod fee_adjustment_manager;
 #[cfg(test)]
 mod dynamic_fee_adjustment_tests;
 
+// Staking Bonus System
+mod staking_bonus;
+#[cfg(test)]
+mod staking_bonus_tests;
+
 // Re-export fee adjustment types
 pub use network_congestion::{CongestionLevel, CongestionTrend, NetworkMetrics, NetworkCongestionMonitor};
 pub use dynamic_fee_adjustment::{FeeAdjustmentConfig, FeeAdjustmentResult, DynamicFeeAdjustment, FeeImpact};
 pub use fee_history::{FeeHistoryEntry, FeeHistoryManager, FeeHistoryStats, AdjustmentReason};
+
+// Re-export staking bonus types
+pub use staking_bonus::{StakingBonusManager, StakeRecord, DistributionRecord, StakingBonusKey};
 pub use emergency_override::{EmergencyOverrideManager, EmergencyOverrideState, OverrideStatus, OverrideReason};
 pub use fee_adjustment_manager::FeeAdjustmentManager;
 
