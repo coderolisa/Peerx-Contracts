@@ -16,7 +16,9 @@ strip = "symbols"
 debug-assertions = false
 panic = "abort"
 codegen-units = 1
-lto = true
+lto = "fat"
+rpath = false
+incremental = false
 
 [profile.release-with-logs]
 inherits = "release"
