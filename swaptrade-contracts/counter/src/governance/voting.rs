@@ -11,6 +11,7 @@ pub enum ProposalStatus {
     Passed,
     Rejected,
     Expired,
+    Executed,
 }
 
 #[derive(Debug, Clone)]
@@ -86,6 +87,18 @@ impl Proposal {
             self.status = ProposalStatus::Rejected;
         }
     }
+
+    /// Execute a passed proposal. Prevents double execution.
+    pub fn execute(&mut self) -> Result<(), String> {
+        if self.status == ProposalStatus::Executed {
+            return Err("Proposal has already been executed".to_string());
+        }
+        if self.status != ProposalStatus::Passed {
+            return Err(format!("Proposal cannot be executed, current status: {:?}", self.status));
+        }
+        self.status = ProposalStatus::Executed;
+        Ok(())
+    }
 }
 
 pub struct GovernanceVoting {
@@ -125,6 +138,11 @@ impl GovernanceVoting {
         let proposal = self.proposals.get_mut(&proposal_id).ok_or("proposal not found")?;
         proposal.finalize(now);
         Ok(proposal.status.clone())
+    }
+
+    pub fn execute_proposal(&mut self, proposal_id: u64) -> Result<(), String> {
+        let proposal = self.proposals.get_mut(&proposal_id).ok_or("proposal not found")?;
+        proposal.execute()
     }
 
     pub fn get(&self, proposal_id: u64) -> Option<&Proposal> {

@@ -65,6 +65,8 @@ pub struct KYCRecord {
     pub updated_by: Option<Address>,
     /// Reason for rejection (if applicable)
     pub rejection_reason: Option<Symbol>,
+    /// Timestamp when pending request expires (if status is Pending)
+    pub expires_at: Option<u64>,
 }
 
 impl KYCRecord {
@@ -76,12 +78,21 @@ impl KYCRecord {
             finalized_at: None,
             updated_by: None,
             rejection_reason: None,
+            expires_at: None,
         }
     }
 
     /// Check if this record is in a terminal state
     pub fn is_finalized(&self) -> bool {
         self.finalized_at.is_some()
+    }
+
+    /// Check if this record has expired (only applies to Pending status)
+    pub fn is_expired(&self, current_time: u64) -> bool {
+        if let Some(expires_at) = self.expires_at {
+            return current_time >= expires_at;
+        }
+        false
     }
 }
 
@@ -119,6 +130,8 @@ pub enum KYCStorageKey {
     OverrideCounter,
     /// Timelock duration in seconds
     TimelockDuration,
+    /// Pending KYC expiry duration in seconds
+    PendingExpiryDuration,
 }
 
 /// Timelock duration for governance overrides (7 days in seconds)
@@ -126,6 +139,12 @@ pub const DEFAULT_TIMELOCK_DURATION: u64 = 7 * 24 * 60 * 60;
 
 /// Minimum timelock duration (1 day)
 pub const MIN_TIMELOCK_DURATION: u64 = 24 * 60 * 60;
+
+/// Default pending KYC expiry duration (30 days in seconds)
+pub const DEFAULT_PENDING_EXPIRY_DURATION: u64 = 30 * 24 * 60 * 60;
+
+/// Minimum pending KYC expiry duration (7 days)
+pub const MIN_PENDING_EXPIRY_DURATION: u64 = 7 * 24 * 60 * 60;
 
 /// KYC system errors
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -148,6 +167,10 @@ pub enum KYCError {
     OverrideAlreadyExecuted = 1007,
     /// Invalid timelock duration
     InvalidTimelockDuration = 1008,
+    /// KYC request has expired
+    RequestExpired = 1009,
+    /// Invalid expiry duration
+    InvalidExpiryDuration = 1010,
 }
 
 /// KYC system implementation
@@ -297,17 +320,32 @@ impl KYCSystem {
             return Err(KYCError::TerminalStateImmutable);
         }
 
+        // Check if pending request has expired
+        let timestamp = env.ledger().timestamp();
+        if record.status == KYCStatus::Pending && record.is_expired(timestamp) {
+            // Emit expiry event
+            env.events().publish(
+                (symbol_short!("kyc"), symbol_short!("expired")),
+                user.clone(),
+            );
+            return Err(KYCError::RequestExpired);
+        }
+
         // Validate state transition
         if !record.status.can_transition_to(&new_status) {
             return Err(KYCError::InvalidStateTransition);
         }
 
         // Update record
-        let timestamp = env.ledger().timestamp();
         record.status = new_status.clone();
         record.updated_at = timestamp;
         record.updated_by = Some(operator.clone());
         record.rejection_reason = None;
+
+        // Clear expiry when moving from Pending to another state
+        if new_status != KYCStatus::Pending {
+            record.expires_at = None;
+        }
 
         if new_status.is_terminal() {
             record.finalized_at = Some(timestamp);
@@ -338,17 +376,21 @@ impl KYCSystem {
             return Err(KYCError::InvalidStateTransition);
         }
 
+        let timestamp = env.ledger().timestamp();
+        let expiry_duration = Self::get_pending_expiry_duration(env);
+        
         let mut new_record = record;
         new_record.status = KYCStatus::Pending;
-        new_record.updated_at = env.ledger().timestamp();
+        new_record.updated_at = timestamp;
         new_record.updated_by = None;
         new_record.rejection_reason = None;
+        new_record.expires_at = Some(timestamp + expiry_duration);
 
         Self::save_record(env, user, &new_record);
 
         env.events().publish(
             (symbol_short!("kyc"), symbol_short!("submitted")),
-            user.clone(),
+            (user.clone(), new_record.expires_at),
         );
 
         Ok(())
@@ -408,6 +450,34 @@ impl KYCSystem {
             .persistent()
             .get(&KYCStorageKey::TimelockDuration)
             .unwrap_or(DEFAULT_TIMELOCK_DURATION)
+    }
+
+    /// Set pending KYC expiry duration (admin only)
+    pub fn set_pending_expiry_duration(
+        env: &Env,
+        admin: &Address,
+        duration: u64,
+    ) -> Result<(), KYCError> {
+        admin.require_auth();
+        crate::admin::require_admin(env, admin).map_err(|_| KYCError::NotKYCOperator)?;
+
+        if duration < MIN_PENDING_EXPIRY_DURATION {
+            return Err(KYCError::InvalidExpiryDuration);
+        }
+
+        env.storage()
+            .persistent()
+            .set(&KYCStorageKey::PendingExpiryDuration, &duration);
+
+        Ok(())
+    }
+
+    /// Get pending KYC expiry duration
+    pub fn get_pending_expiry_duration(env: &Env) -> u64 {
+        env.storage()
+            .persistent()
+            .get(&KYCStorageKey::PendingExpiryDuration)
+            .unwrap_or(DEFAULT_PENDING_EXPIRY_DURATION)
     }
 
     /// Propose governance override for terminal state change

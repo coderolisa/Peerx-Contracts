@@ -93,6 +93,108 @@ fn expect_kyc_panic(f: impl FnOnce()) {
 }
 
 #[test]
+fn test_kyc_pending_request_expires_after_duration() {
+    let (env, contract_id, admin, operator, user, _) = setup_contract();
+
+    // Set short expiry duration for testing (7 days minimum)
+    with_contract(&env, &contract_id, || {
+        KYCSystem::set_pending_expiry_duration(&env, &admin, MIN_PENDING_EXPIRY_DURATION).unwrap();
+    });
+
+    // Submit KYC
+    submit_kyc(&env, &contract_id, &user);
+
+    let record = get_record(&env, &contract_id, &user);
+    assert_eq!(record.status, KYCStatus::Pending);
+    assert!(record.expires_at.is_some());
+
+    // Move forward in time past expiry
+    env.ledger().with_mut(|li| {
+        li.timestamp += MIN_PENDING_EXPIRY_DURATION + 1;
+    });
+
+    // Try to approve expired request - should fail
+    with_contract(&env, &contract_id, || {
+        assert_eq!(
+            KYCSystem::update_status(&env, &operator, &user, KYCStatus::InReview, None),
+            Err(KYCError::RequestExpired)
+        );
+    });
+}
+
+#[test]
+fn test_kyc_expiry_boundary_exact_expiry_time() {
+    let (env, contract_id, admin, operator, user, _) = setup_contract();
+
+    // Set short expiry duration for testing
+    with_contract(&env, &contract_id, || {
+        KYCSystem::set_pending_expiry_duration(&env, &admin, MIN_PENDING_EXPIRY_DURATION).unwrap();
+    });
+
+    // Submit KYC
+    submit_kyc(&env, &contract_id, &user);
+
+    let record = get_record(&env, &contract_id, &user);
+    let expiry_time = record.expires_at.unwrap();
+
+    // Move to exactly expiry time - should still be valid
+    env.ledger().with_mut(|li| {
+        li.timestamp = expiry_time - 1;
+    });
+
+    // Should still be able to approve (1 second before expiry)
+    with_contract(&env, &contract_id, || {
+        KYCSystem::update_status(&env, &operator, &user, KYCStatus::InReview, None).unwrap();
+    });
+
+    let record = get_record(&env, &contract_id, &user);
+    assert_eq!(record.status, KYCStatus::InReview);
+    assert!(record.expires_at.is_none()); // Cleared after transition
+}
+
+#[test]
+fn test_kyc_expired_request_emits_event() {
+    let (env, contract_id, admin, operator, user, _) = setup_contract();
+
+    // Set short expiry duration
+    with_contract(&env, &contract_id, || {
+        KYCSystem::set_pending_expiry_duration(&env, &admin, MIN_PENDING_EXPIRY_DURATION).unwrap();
+    });
+
+    // Submit KYC
+    submit_kyc(&env, &contract_id, &user);
+
+    // Move past expiry
+    env.ledger().with_mut(|li| {
+        li.timestamp += MIN_PENDING_EXPIRY_DURATION + 1;
+    });
+
+    // Attempt to approve - this should emit an expiry event
+    with_contract(&env, &contract_id, || {
+        let result = KYCSystem::update_status(&env, &operator, &user, KYCStatus::InReview, None);
+        assert_eq!(result, Err(KYCError::RequestExpired));
+    });
+}
+
+#[test]
+fn test_kyc_expiry_cleared_on_status_transition() {
+    let (env, contract_id, _, operator, user, _) = setup_contract();
+
+    // Submit KYC
+    submit_kyc(&env, &contract_id, &user);
+
+    let record = get_record(&env, &contract_id, &user);
+    assert!(record.expires_at.is_some());
+
+    // Move to InReview
+    move_to_review(&env, &contract_id, &operator, &user);
+
+    let record = get_record(&env, &contract_id, &user);
+    assert_eq!(record.status, KYCStatus::InReview);
+    assert!(record.expires_at.is_none()); // Should be cleared
+}
+
+#[test]
 fn test_transition_matrix_matches_expected_fsm() {
     assert!(KYCStatus::Unverified.can_transition_to(&KYCStatus::Pending));
     assert!(KYCStatus::Pending.can_transition_to(&KYCStatus::InReview));
@@ -296,6 +398,7 @@ fn test_seeded_terminal_record_cannot_be_mutated_through_controlled_flow() {
                 finalized_at: Some(env.ledger().timestamp()),
                 updated_by: Some(operator.clone()),
                 rejection_reason: None,
+                expires_at: None,
             },
         );
 
