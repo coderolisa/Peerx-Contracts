@@ -90,7 +90,8 @@ fn test_pool_swap() {
 
     let pool_id = client.register_pool(&admin, &token_a, &token_b, &10000, &10000, &30);
 
-    let amount_out = client.pool_swap(&pool_id, &token_a, &100, &90);
+    let trader = Address::generate(&env);
+    let amount_out = client.pool_swap(&pool_id, &token_a, &100, &90, &trader);
 
     assert!(amount_out >= 90);
     assert!(amount_out < 100);
@@ -110,7 +111,8 @@ fn test_pool_remove_liquidity() {
     let pool_id = client.register_pool(&admin, &token_a, &token_b, &1000, &2000, &30);
     let lp_tokens = client.pool_add_liquidity(&pool_id, &1000, &2000, &provider);
 
-    let (amount_a, amount_b) = client.pool_remove_liquidity(&pool_id, &lp_tokens / 2, &provider);
+    let half_lp_tokens = lp_tokens / 2;
+    let (amount_a, amount_b) = client.pool_remove_liquidity(&pool_id, &half_lp_tokens, &provider);
 
     assert!(amount_a > 0);
     assert!(amount_b > 0);

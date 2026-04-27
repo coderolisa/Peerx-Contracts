@@ -1,5 +1,5 @@
-use soroban_sdk::{contracttype, Env, Symbol, symbol_short, Address};
-use crate::network_congestion::{CongestionLevel, NetworkMetrics, NetworkCongestionMonitor};
+use crate::network_congestion::{CongestionLevel, NetworkCongestionMonitor, NetworkMetrics};
+use soroban_sdk::{contracttype, symbol_short, Address, Env, Symbol};
 
 /// Emergency override status
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -7,10 +7,10 @@ use crate::network_congestion::{CongestionLevel, NetworkMetrics, NetworkCongesti
 pub enum OverrideStatus {
     /// Override is not active
     Inactive,
-    
+
     /// Override is currently active
     Active,
-    
+
     /// Override is temporarily suspended (recovery phase)
     Suspended,
 }
@@ -21,16 +21,16 @@ pub enum OverrideStatus {
 pub enum OverrideReason {
     /// Critical congestion detected
     CriticalCongestion,
-    
+
     /// Extreme gas prices
     ExtremeGasPrices,
-    
+
     /// Network queue overflow
     QueueOverflow,
-    
+
     /// Manual administrator intervention
     ManualIntervention,
-    
+
     /// Multiple congestion indicators exceeded
     MultipleTriggers,
 }
@@ -41,25 +41,25 @@ pub enum OverrideReason {
 pub struct EmergencyOverrideState {
     /// Whether override is currently active
     pub status: OverrideStatus,
-    
+
     /// Fee cap in basis points during override
     pub fee_cap_bps: u32,
-    
+
     /// When override was activated
     pub activated_at: u64,
-    
+
     /// When override should auto-deactivate (if any)
     pub auto_deactivate_at: Option<u64>,
-    
+
     /// Reason for activation
     pub reason: OverrideReason,
-    
+
     /// Admin who activated (if manual)
     pub activated_by: Option<Address>,
-    
+
     /// Number of times emergency override has been triggered
     pub trigger_count: u32,
-    
+
     /// When override was last toggled
     pub last_status_change: u64,
 }
@@ -70,25 +70,25 @@ pub struct EmergencyOverrideManager;
 impl EmergencyOverrideManager {
     /// Storage key for emergency override state
     pub const OVERRIDE_STATE_KEY: Symbol = symbol_short!("emgovst");
-    
+
     /// Storage key for override history
     pub const OVERRIDE_HISTORY_KEY: Symbol = symbol_short!("emgohst");
-    
+
     /// Storage key for override authorization list
     pub const AUTHORIZED_ADMINS_KEY: Symbol = symbol_short!("emgoaut");
-    
+
     /// Default emergency fee cap (basis points)
     const DEFAULT_EMERGENCY_FEE_CAP: u32 = 300; // 3.0%
-    
+
     /// Auto-recovery timeout for auto-deactivation (in seconds)
     const AUTO_RECOVERY_TIMEOUT: u64 = 1800; // 30 minutes
-    
+
     /// Critical capacity threshold for auto-trigger
     const CRITICAL_CAPACITY_THRESHOLD: u32 = 95;
-    
+
     /// Critical gas price threshold for auto-trigger
     const CRITICAL_GAS_PRICE_THRESHOLD: u64 = 5000;
-    
+
     /// Critical pending transaction threshold for auto-trigger
     const CRITICAL_PENDING_TXN_THRESHOLD: u64 = 15000;
 
@@ -104,7 +104,7 @@ impl EmergencyOverrideManager {
             trigger_count: 0,
             last_status_change: 0,
         };
-        
+
         env.storage()
             .persistent()
             .set(&Self::OVERRIDE_STATE_KEY, &state);
@@ -196,7 +196,7 @@ impl EmergencyOverrideManager {
         }
 
         let mut state = Self::get_state(env);
-        
+
         if state.status == OverrideStatus::Active {
             return Err("Override already active".to_string());
         }
@@ -225,16 +225,16 @@ impl EmergencyOverrideManager {
         current_time: u64,
     ) -> Result<(), String> {
         let mut state = Self::get_state(env);
-        
+
         if state.status == OverrideStatus::Active {
             return Err("Override already active".to_string());
         }
 
         // Calculate fee cap based on severity
         let fee_cap = match reason {
-            OverrideReason::ExtremeGasPrices => 250, // 2.5%
-            OverrideReason::QueueOverflow => 280,    // 2.8%
-            OverrideReason::MultipleTriggers => 200, // 2.0%
+            OverrideReason::ExtremeGasPrices => 250,   // 2.5%
+            OverrideReason::QueueOverflow => 280,      // 2.8%
+            OverrideReason::MultipleTriggers => 200,   // 2.0%
             OverrideReason::CriticalCongestion => 300, // 3.0%
             _ => Self::DEFAULT_EMERGENCY_FEE_CAP,
         };
@@ -256,13 +256,9 @@ impl EmergencyOverrideManager {
     }
 
     /// Deactivate emergency override (manual or automatic)
-    pub fn deactivate(
-        env: &Env,
-        admin: Option<Address>,
-        current_time: u64,
-    ) -> Result<(), String> {
+    pub fn deactivate(env: &Env, admin: Option<Address>, current_time: u64) -> Result<(), String> {
         let mut state = Self::get_state(env);
-        
+
         if state.status != OverrideStatus::Active {
             return Err("Override not active".to_string());
         }
@@ -288,7 +284,7 @@ impl EmergencyOverrideManager {
     /// Check if override should auto-deactivate due to timeout
     pub fn check_auto_deactivation(env: &Env, current_time: u64) -> bool {
         let mut state = Self::get_state(env);
-        
+
         if state.status != OverrideStatus::Active {
             return false;
         }
@@ -298,11 +294,11 @@ impl EmergencyOverrideManager {
                 state.status = OverrideStatus::Inactive;
                 state.auto_deactivate_at = None;
                 state.last_status_change = current_time;
-                
+
                 env.storage()
                     .persistent()
                     .set(&Self::OVERRIDE_STATE_KEY, &state);
-                
+
                 return true;
             }
         }
@@ -317,12 +313,10 @@ impl EmergencyOverrideManager {
     ) -> bool {
         if let Some(prev) = previous_metrics {
             let trend = NetworkCongestionMonitor::calculate_trend(current_metrics, prev);
-            let recovery_score = (
-                (current_metrics.capacity_utilization_percent < 70) as u32
+            let recovery_score = ((current_metrics.capacity_utilization_percent < 70) as u32
                 + (current_metrics.avg_gas_price < 2000) as u32
-                + (current_metrics.pending_txn_count < 5000) as u32
-            );
-            
+                + (current_metrics.pending_txn_count < 5000) as u32);
+
             trend == crate::network_congestion::CongestionTrend::Decreasing && recovery_score >= 2
         } else {
             false
@@ -393,7 +387,7 @@ impl EmergencyOverrideManager {
     /// Get time remaining until auto-deactivation
     pub fn get_time_until_auto_deactivation(env: &Env, current_time: u64) -> Option<u64> {
         let state = Self::get_state(env);
-        
+
         if state.status != OverrideStatus::Active {
             return None;
         }

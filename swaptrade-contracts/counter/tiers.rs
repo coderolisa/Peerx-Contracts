@@ -1,5 +1,4 @@
 use soroban_sdk::contracttype;
-use crate::fee_progression::FeeProgression;
 
 #[derive(Clone, PartialEq, Debug)]
 #[contracttype]
@@ -31,16 +30,6 @@ impl UserTier {
         (swap_amount * bps) / 10000
     }
 
-    /// Calculate effective fee with achievement discounts applied
-    /// This method integrates with the FeeProgression system
-    pub fn calculate_effective_fee_with_achievements(
-        &self,
-        fee_progression: &mut FeeProgression,
-        env: &soroban_sdk::Env,
-        user: &soroban_sdk::Address,
-    ) -> crate::fee_progression::FeeCalculationResult {
-        fee_progression.calculate_effective_fee(env, user, self)
-    }
 }
 
 /// Calculate the user tier based on trade count and volume

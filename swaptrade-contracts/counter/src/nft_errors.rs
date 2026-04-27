@@ -1,7 +1,4 @@
-use soroban_sdk::contracterror;
-
 /// NFT-specific errors for the SwapTrade NFT marketplace
-#[contracterror]
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum NFTError {
     // ===== General Errors (1000-1099) =====
@@ -116,13 +113,13 @@ pub enum NFTError {
     /// Insufficient repayment amount
     InsufficientRepayment = 1510,
     /// Loan is not undercollateralized
-    LoanNotUnderCollat = 1511,
+    LoanNotUndercollateralized = 1511,
     /// Liquidation queue is full
     LiqQueueFull = 1512,
     /// No bids in liquidation auction
     NoAuctionBids = 1513,
     /// Invalid liquidation bid
-    InvalidLiqBid = 1514,
+    InvalidLiquidationBid = 1514,
 
     // ===== Royalty Errors (1600-1699) =====
     /// Royalty payment failed

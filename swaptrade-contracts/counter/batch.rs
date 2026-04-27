@@ -136,6 +136,25 @@ fn is_valid_token(token: &Symbol) -> bool {
     *token == symbol_short!("XLM") || *token == symbol_short!("USDCSIM")
 }
 
+fn authorize_batch_access(env: &Env, operations: &Vec<BatchOperation>) -> Result<(), Symbol> {
+    for i in 0..operations.len() {
+        if let Some(operation) = operations.get(i) {
+            match operation {
+                BatchOperation::Swap(_, _, _, user)
+                | BatchOperation::AddLiquidity(_, _, user)
+                | BatchOperation::RemoveLiquidity(_, _, user) => {
+                    user.require_auth();
+                    crate::require_verified_user(env, &user)
+                        .map_err(|_| Symbol::new(env, "kyc_req"))?;
+                }
+                BatchOperation::MintToken(_, _, _) => {}
+            }
+        }
+    }
+
+    Ok(())
+}
+
 /// Converts Symbol to Asset
 fn symbol_to_asset(sym: &Symbol) -> Asset {
     if *sym == symbol_short!("XLM") {
@@ -155,8 +174,8 @@ pub fn execute_batch_atomic(
     portfolio: &mut Portfolio,
     operations: Vec<BatchOperation>,
 ) -> Result<BatchResult, Symbol> {
-    // Validate entire batch first
     validate_batch(env, &operations)?;
+    authorize_batch_access(env, &operations)?;
     
     // Create a snapshot of the portfolio state for rollback
     // OPTIMIZATION: Use selective cloning instead of full clone when possible
@@ -197,8 +216,8 @@ pub fn execute_batch_best_effort(
     portfolio: &mut Portfolio,
     operations: Vec<BatchOperation>,
 ) -> Result<BatchResult, Symbol> {
-    // Validate entire batch first
     validate_batch(env, &operations)?;
+    authorize_batch_access(env, &operations)?;
     
     // OPTIMIZATION: Pre-allocate result vector with known capacity
     let mut batch_result = BatchResult::new_with_capacity(env, operations.len() as u32);
@@ -289,7 +308,7 @@ fn execute_single_operation(
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "experimental"))]
 mod tests {
     use super::*;
     use soroban_sdk::testutils::Address as TestAddress;

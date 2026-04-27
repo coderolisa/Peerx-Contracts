@@ -187,28 +187,28 @@ mod formal_verification {
     }
 
     /// Property Test: AMM Constant Product Invariant
-    /// Verifies: (x_before * y_before) >= (x_after * y_after)
-    /// I.e., after a swap with fees, product should not increase
+    /// Verifies: (x_after * y_after) >= (x_before * y_before)
+    /// I.e., after a swap with fees retained in the pool, product should not decrease
     ///
-    /// Invariant: k_after = x_after * y_after <= k_before = x_before * y_before
+    /// Invariant: k_after = x_after * y_after >= k_before = x_before * y_before
     #[test]
     fn property_amm_constant_product_holds() {
         // Simulate various swaps
         let swap_scenarios = vec![
             // (xlm_before, usdc_before, xlm_after, usdc_after)
-            (1000_i128, 1000_i128, 900_i128, 1100_i128), // xlm swap for usdc
-            (5000_i128, 2000_i128, 4500_i128, 2100_i128), // Another valid swap
-            (100_i128, 100_i128, 110_i128, 95_i128),     // Small amounts
+            (1000_i128, 1000_i128, 1100_i128, 910_i128),
+            (5000_i128, 2000_i128, 5200_i128, 1925_i128),
+            (100_i128, 100_i128, 110_i128, 91_i128),
         ];
 
         for (xlm_before, usdc_before, xlm_after, usdc_after) in swap_scenarios {
             let k_before = (xlm_before as u128) * (usdc_before as u128);
             let k_after = (xlm_after as u128) * (usdc_after as u128);
 
-            // Product invariant: k_after <= k_before (fees reduce product)
+            // Product invariant: k_after >= k_before when fees are retained by the pool.
             assert!(
-                k_after <= k_before,
-                "AMM invariant violated: {}*{} > {}*{} (k_after={} > k_before={})",
+                k_after >= k_before,
+                "AMM invariant violated: {}*{} < {}*{} (k_after={} < k_before={})",
                 xlm_after,
                 usdc_after,
                 xlm_before,
@@ -355,7 +355,7 @@ mod formal_verification {
         assert_eq!(result, i128::MAX, "Saturating addition should cap at MAX");
 
         // Subtraction should saturate, not panic
-        let min_result = (0_i128).saturating_sub(1);
+        let min_result = i128::MIN.saturating_sub(1);
         assert_eq!(
             min_result,
             i128::MIN,
@@ -455,7 +455,6 @@ mod formal_verification {
     /// Exhaustive Property Test: Fee Bounds on 10,000 Random Amounts
     /// Tests fee calculations across a wide range of input values
     #[test]
-    #[ignore]
     fn exhaustive_fee_bounds_10k_sequences() {
         const NUM_SEQUENCES: usize = 10_000;
         const MAX_AMOUNT: i128 = 1_000_000_000; // 1 billion
@@ -491,7 +490,6 @@ mod formal_verification {
 
     /// Exhaustive Property Test: Balance Conservation in 10,000 Transfer Sequences
     #[test]
-    #[ignore]
     fn exhaustive_balance_conservation_10k_sequences() {
         const NUM_SEQUENCES: usize = 10_000;
         const FEE_BPS: i128 = 30;
@@ -521,7 +519,6 @@ mod formal_verification {
 
     /// Exhaustive Property Test: Monotonicity in 10,000 State Sequences
     #[test]
-    #[ignore]
     fn exhaustive_monotonicity_10k_sequences() {
         const NUM_SEQUENCES: usize = 10_000;
 
@@ -542,7 +539,6 @@ mod formal_verification {
 
     /// Exhaustive Property Test: AMM Invariant across 10,000 Swap Sequences
     #[test]
-    #[ignore]
     fn exhaustive_amm_invariant_10k_sequences() {
         const NUM_SEQUENCES: usize = 10_000;
         let initial_k = 1_000_000_u128; // x * y = 1M initially

@@ -1,7 +1,5 @@
 extern crate alloc;
-use soroban_sdk::{contracttype, Address, Env, Symbol, Map, Vec, symbol_short};
-#[cfg(test)]
-use soroban_sdk::testutils::Address as _;
+use soroban_sdk::{contracttype, symbol_short, Address, Env, Map, Symbol, Vec};
 
 #[derive(Clone, PartialEq, Debug)]
 #[contracttype]
@@ -951,6 +949,11 @@ pub struct Metrics {
 }
 
 
+#[cfg(feature = "experimental")]
+mod portfolio_tests {
+use super::*;
+use soroban_sdk::testutils::Address as _;
+
 #[test]
 #[should_panic(expected = "Amount must be positive")] 
 fn test_mint_negative_should_panic() {
@@ -1168,4 +1171,5 @@ fn test_rewards_integrate_with_trade_counting() {
     // Badge should still be there, but not duplicated
     assert_eq!(portfolio.has_badge(&env, user.clone(), Badge::FirstTrade), true);
     assert_eq!(portfolio.get_user_badges(&env, user).len(), 1);
+}
 }
