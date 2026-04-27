@@ -40,4 +40,14 @@ pub enum ContractError {
     LPPositionNotFound = 400,
     /// Insufficient LP tokens
     InsufficientLPTokens = 401,
+    /// KYC verification required
+    KYCVerificationRequired = 500,
+    /// User is not a KYC operator
+    NotKYCOperator = 501,
+    /// Invalid KYC state transition
+    InvalidKYCStateTransition = 502,
+    /// KYC terminal state is immutable
+    KYCTerminalStateImmutable = 503,
+    /// Self-verification not allowed
+    SelfVerificationNotAllowed = 504,
 }

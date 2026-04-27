@@ -143,11 +143,13 @@ pub fn alert_created(env: &Env, owner: Address, alert_id: u64, kind_tag: Symbol,
     );
 }
 
+#[cfg(feature = "experimental")]
 /// Emitted when performance metrics are calculated for a user.
 /// Used for tracking portfolio performance analytics.
 ///
 /// Topic  : ("PerformanceMetricsCalculated", user_address)
 /// Payload: (time_window, sharpe_ratio, max_drawdown, timestamp)
+#[cfg(feature = "experimental")]
 pub fn performance_metrics_calculated(
     env: &Env,
     user: Address,
@@ -162,11 +164,13 @@ pub fn performance_metrics_calculated(
     );
 }
 
+#[cfg(feature = "experimental")]
 /// Emitted when asset allocation analysis is completed.
 /// Used for portfolio diversification tracking.
 ///
 /// Topic  : ("AssetAllocationAnalyzed", user_address)
 /// Payload: (total_assets, diversification_score, timestamp)
+#[cfg(feature = "experimental")]
 pub fn asset_allocation_analyzed(
     env: &Env,
     user: Address,
@@ -180,11 +184,13 @@ pub fn asset_allocation_analyzed(
     );
 }
 
+#[cfg(feature = "experimental")]
 /// Emitted when benchmark comparison is calculated.
 /// Used for performance relative to market benchmarks.
 ///
 /// Topic  : ("BenchmarkComparisonCalculated", user_address, benchmark_id)
 /// Payload: (alpha, beta, timestamp)
+#[cfg(feature = "experimental")]
 pub fn benchmark_comparison_calculated(
     env: &Env,
     user: Address,
@@ -203,24 +209,31 @@ pub fn benchmark_comparison_calculated(
     );
 }
 
+#[cfg(feature = "experimental")]
 /// Emitted when period returns are calculated.
 /// Used for tracking returns over specific time periods.
 ///
 /// Topic  : ("PeriodReturnsCalculated", user_address)
 /// Payload: (start_timestamp, end_timestamp, time_weighted_return, timestamp)
+#[cfg(feature = "experimental")]
 pub fn period_returns_calculated(
-        env: &Env,
-        user: Address,
-        start_timestamp: u64,
-        end_timestamp: u64,
-        time_weighted_return: i128,
-        timestamp: i64,
-    ) {
-        env.events().publish(
-            (Symbol::new(env, "PeriodReturnsCalculated"), user),
-            (start_timestamp, end_timestamp, time_weighted_return, timestamp),
-        );
-    }
+    env: &Env,
+    user: Address,
+    start_timestamp: u64,
+    end_timestamp: u64,
+    time_weighted_return: i128,
+    timestamp: i64,
+) {
+    env.events().publish(
+        (Symbol::new(env, "PeriodReturnsCalculated"), user),
+        (
+            start_timestamp,
+            end_timestamp,
+            time_weighted_return,
+            timestamp,
+        ),
+    );
+}
 
 /// Emitted when network congestion level changes.
 /// Used for monitoring network health.
@@ -255,7 +268,13 @@ pub fn fee_adjustment_applied(
 ) {
     env.events().publish(
         (Symbol::new(env, "FeeAdjustmentApplied"),),
-        (previous_fee_bps, new_fee_bps, adjustment_reason, congestion_level, timestamp),
+        (
+            previous_fee_bps,
+            new_fee_bps,
+            adjustment_reason,
+            congestion_level,
+            timestamp,
+        ),
     );
 }
 
@@ -281,10 +300,7 @@ pub fn emergency_fee_override_activated(
 ///
 /// Topic  : ("EmergencyFeeOverrideDeactivated",)
 /// Payload: (timestamp,)
-pub fn emergency_fee_override_deactivated(
-    env: &Env,
-    timestamp: u64,
-) {
+pub fn emergency_fee_override_deactivated(env: &Env, timestamp: u64) {
     env.events().publish(
         (Symbol::new(env, "EmergencyFeeOverrideDeactivated"),),
         (timestamp,),
@@ -296,12 +312,7 @@ pub fn emergency_fee_override_deactivated(
 ///
 /// Topic  : ("FeeConfigurationUpdated",)
 /// Payload: (admin_address, config_change_tag, timestamp)
-pub fn fee_configuration_updated(
-    env: &Env,
-    admin: Address,
-    change_type: Symbol,
-    timestamp: u64,
-) {
+pub fn fee_configuration_updated(env: &Env, admin: Address, change_type: Symbol, timestamp: u64) {
     env.events().publish(
         (Symbol::new(env, "FeeConfigurationUpdated"), admin),
         (change_type, timestamp),

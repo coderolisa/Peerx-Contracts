@@ -1,5 +1,7 @@
-use soroban_sdk::{contracttype, Symbol, symbol_short};
-use crate::network_congestion::{CongestionLevel, CongestionTrend, NetworkMetrics, NetworkCongestionMonitor};
+use crate::network_congestion::{
+    CongestionLevel, CongestionTrend, NetworkCongestionMonitor, NetworkMetrics,
+};
+use soroban_sdk::{contracttype, symbol_short, Symbol};
 
 /// Dynamic fee adjustment configuration parameters
 #[derive(Clone, Debug)]
@@ -7,41 +9,41 @@ use crate::network_congestion::{CongestionLevel, CongestionTrend, NetworkMetrics
 pub struct FeeAdjustmentConfig {
     /// Base fee in basis points (without congestion adjustment)
     pub base_fee_bps: u32,
-    
+
     /// Multiplier for very low congestion (e.g., 0.8 = 80% of base fee)
     /// Stored as fixed-point: 100 = 1.0
     pub very_low_multiplier: u32,
-    
+
     /// Multiplier for low congestion
     pub low_multiplier: u32,
-    
+
     /// Multiplier for moderate congestion
     pub moderate_multiplier: u32,
-    
+
     /// Multiplier for high congestion
     pub high_multiplier: u32,
-    
+
     /// Multiplier for critical congestion
     pub critical_multiplier: u32,
-    
+
     /// Maximum fee ceiling in basis points (prevents runaway fees)
     pub max_fee_bps: u32,
-    
+
     /// Minimum fee floor in basis points (prevents fees going to zero)
     pub min_fee_bps: u32,
-    
+
     /// Enable predictive surge pricing based on trend
     pub enable_trend_adjustment: bool,
-    
+
     /// Trend multiplier adjustment (percentage, 0-50%)
     pub trend_adjustment_percent: u32,
-    
+
     /// Minimum time between consecutive fee updates (in seconds)
     pub update_cooldown_seconds: u64,
-    
+
     /// Enable emergency override for extreme congestion
     pub enable_emergency_override: bool,
-    
+
     /// Emergency fee cap (basis points) when override is active
     pub emergency_fee_cap_bps: u32,
 }
@@ -49,19 +51,19 @@ pub struct FeeAdjustmentConfig {
 impl Default for FeeAdjustmentConfig {
     fn default() -> Self {
         Self {
-            base_fee_bps: 50,                    // 0.5%
-            very_low_multiplier: 80,             // 0.8x base fee
-            low_multiplier: 90,                  // 0.9x base fee
-            moderate_multiplier: 100,            // 1.0x base fee (no adjustment)
-            high_multiplier: 150,                // 1.5x base fee
-            critical_multiplier: 250,            // 2.5x base fee
-            max_fee_bps: 500,                    // 5.0% hard cap
-            min_fee_bps: 10,                     // 0.1% hard floor
+            base_fee_bps: 50,         // 0.5%
+            very_low_multiplier: 80,  // 0.8x base fee
+            low_multiplier: 90,       // 0.9x base fee
+            moderate_multiplier: 100, // 1.0x base fee (no adjustment)
+            high_multiplier: 150,     // 1.5x base fee
+            critical_multiplier: 250, // 2.5x base fee
+            max_fee_bps: 500,         // 5.0% hard cap
+            min_fee_bps: 10,          // 0.1% hard floor
             enable_trend_adjustment: true,
-            trend_adjustment_percent: 20,        // 20% trend adjustment
-            update_cooldown_seconds: 60,         // 1 minute between updates
+            trend_adjustment_percent: 20, // 20% trend adjustment
+            update_cooldown_seconds: 60,  // 1 minute between updates
             enable_emergency_override: true,
-            emergency_fee_cap_bps: 300,          // 3.0% emergency cap
+            emergency_fee_cap_bps: 300, // 3.0% emergency cap
         }
     }
 }
@@ -72,25 +74,25 @@ impl Default for FeeAdjustmentConfig {
 pub struct FeeAdjustmentResult {
     /// Final calculated fee in basis points
     pub adjusted_fee_bps: u32,
-    
+
     /// Base fee before adjustment
     pub base_fee_bps: u32,
-    
+
     /// Multiplier applied due to congestion
     pub congestion_multiplier: u32,
-    
+
     /// Additional adjustment from trend (in basis points)
     pub trend_adjustment_bps: i32,
-    
+
     /// Current congestion level
     pub congestion_level: CongestionLevel,
-    
+
     /// Trend direction
     pub trend: CongestionTrend,
-    
+
     /// Whether emergency override was applied
     pub emergency_override_active: bool,
-    
+
     /// Timestamp of this calculation
     pub calculated_at: u64,
 }
@@ -101,13 +103,13 @@ pub struct FeeAdjustmentResult {
 pub struct CongestionVolatility {
     /// Average congestion score from recent samples
     pub avg_score: u32,
-    
+
     /// Maximum congestion score seen recently
     pub max_score: u32,
-    
+
     /// Minimum congestion score seen recently
     pub min_score: u32,
-    
+
     /// Standard deviation of recent congestion scores
     pub volatility_score: u32,
 }
@@ -118,16 +120,16 @@ pub struct DynamicFeeAdjustment;
 impl DynamicFeeAdjustment {
     /// Storage key for current fee configuration
     pub const CONFIG_KEY: Symbol = symbol_short!("fdynsrc");
-    
+
     /// Storage key for current adjusted fees
     pub const CURRENT_FEES_KEY: Symbol = symbol_short!("curfees");
-    
+
     /// Storage key for last fee update timestamp
     pub const LAST_UPDATE_KEY: Symbol = symbol_short!("lstupdt");
-    
+
     /// Storage key for emergency override flag
     pub const EMERGENCY_OVERRIDE_KEY: Symbol = symbol_short!("emerovr");
-    
+
     /// Fixed-point precision for multipliers (100 = 1.0)
     const MULTIPLIER_PRECISION: u32 = 100;
 
@@ -140,15 +142,15 @@ impl DynamicFeeAdjustment {
         emergency_override_active: bool,
     ) -> FeeAdjustmentResult {
         let congestion_level = NetworkCongestionMonitor::get_current_congestion_level(metrics);
-        
+
         // Get base multiplier from congestion level
         let mut congestion_multiplier = Self::get_multiplier_for_level(&congestion_level, config);
-        
+
         // Calculate trend-based adjustment if enabled and we have previous metrics
         let mut trend_adjustment_bps = 0i32;
         let trend = if let Some(prev_metrics) = previous_metrics {
             let t = NetworkCongestionMonitor::calculate_trend(metrics, prev_metrics);
-            
+
             if config.enable_trend_adjustment {
                 match t {
                     CongestionTrend::Increasing => {
@@ -186,7 +188,7 @@ impl DynamicFeeAdjustment {
 
         // Calculate base adjusted fee
         let mut adjusted_fee = Self::apply_multiplier(config.base_fee_bps, congestion_multiplier);
-        
+
         // Apply trend adjustment
         if trend_adjustment_bps > 0 {
             adjusted_fee = adjusted_fee.saturating_add(trend_adjustment_bps as u32);
@@ -237,7 +239,7 @@ impl DynamicFeeAdjustment {
         if is_increase {
             adjustment
         } else {
-            adjustment / 2  // Less aggressive on decreases
+            adjustment / 2 // Less aggressive on decreases
         }
     }
 
@@ -254,7 +256,8 @@ impl DynamicFeeAdjustment {
         // Emergency override triggers at critical congestion AND high gas prices
         match current_level {
             CongestionLevel::Critical => {
-                current_metrics.avg_gas_price > 3000 || current_metrics.capacity_utilization_percent >= 95
+                current_metrics.avg_gas_price > 3000
+                    || current_metrics.capacity_utilization_percent >= 95
             }
             _ => false,
         }
@@ -268,7 +271,7 @@ impl DynamicFeeAdjustment {
     ) -> FeeImpact {
         let original_fee_amount = (transaction_amount as u128 * original_fee_bps as u128) / 10000;
         let adjusted_fee_amount = (transaction_amount as u128 * adjusted_fee_bps as u128) / 10000;
-        
+
         let fee_difference = if adjusted_fee_amount > original_fee_amount {
             (adjusted_fee_amount - original_fee_amount) as u64
         } else {
@@ -276,7 +279,8 @@ impl DynamicFeeAdjustment {
         };
 
         let fee_difference_percent = if original_fee_amount > 0 {
-            ((adjusted_fee_amount - original_fee_amount) as i128 * 100) / (original_fee_amount as i128)
+            ((adjusted_fee_amount - original_fee_amount) as i128 * 100)
+                / (original_fee_amount as i128)
         } else {
             0
         };
@@ -297,7 +301,7 @@ impl DynamicFeeAdjustment {
     ) -> u32 {
         let current_multiplier = Self::get_multiplier_for_level(&current_level, config);
         let target_multiplier = Self::get_multiplier_for_level(&target_level, config);
-        
+
         // Average between current and target for smoother transition
         let avg_multiplier = (current_multiplier + target_multiplier) / 2;
         Self::apply_multiplier(config.base_fee_bps, avg_multiplier)
@@ -310,13 +314,13 @@ impl DynamicFeeAdjustment {
 pub struct FeeImpact {
     /// Original fee amount (in stroops)
     pub original_fee: u64,
-    
+
     /// Adjusted fee amount (in stroops)
     pub adjusted_fee: u64,
-    
+
     /// Absolute difference in fee
     pub fee_difference: u64,
-    
+
     /// Percentage change in fee
     pub fee_difference_percent: i32,
 }
@@ -345,10 +349,10 @@ mod tests {
     fn test_apply_multiplier() {
         // Test 1.0x multiplier
         assert_eq!(DynamicFeeAdjustment::apply_multiplier(100, 100), 100);
-        
+
         // Test 2.0x multiplier
         assert_eq!(DynamicFeeAdjustment::apply_multiplier(100, 200), 200);
-        
+
         // Test 0.5x multiplier
         assert_eq!(DynamicFeeAdjustment::apply_multiplier(100, 50), 50);
     }
@@ -364,15 +368,10 @@ mod tests {
     fn test_calculate_adjusted_fee_very_low_congestion() {
         let config = create_test_config();
         let metrics = create_test_metrics(10, 100); // Very low congestion
-        
-        let result = DynamicFeeAdjustment::calculate_adjusted_fee(
-            &config,
-            &metrics,
-            None,
-            1000,
-            false,
-        );
-        
+
+        let result =
+            DynamicFeeAdjustment::calculate_adjusted_fee(&config, &metrics, None, 1000, false);
+
         // 50 bps * 0.8 = 40 bps
         assert_eq!(result.adjusted_fee_bps, 40);
         assert_eq!(result.congestion_level, CongestionLevel::VeryLow);
@@ -382,15 +381,10 @@ mod tests {
     fn test_calculate_adjusted_fee_critical_congestion() {
         let config = create_test_config();
         let metrics = create_test_metrics(100, 5000); // Critical congestion
-        
-        let result = DynamicFeeAdjustment::calculate_adjusted_fee(
-            &config,
-            &metrics,
-            None,
-            1000,
-            false,
-        );
-        
+
+        let result =
+            DynamicFeeAdjustment::calculate_adjusted_fee(&config, &metrics, None, 1000, false);
+
         // 50 bps * 2.5 = 125 bps, but capped at max_fee_bps (500)
         assert_eq!(result.adjusted_fee_bps, 125);
         assert_eq!(result.congestion_level, CongestionLevel::Critical);
@@ -401,15 +395,10 @@ mod tests {
         let mut config = create_test_config();
         config.max_fee_bps = 100;
         let metrics = create_test_metrics(100, 5000);
-        
-        let result = DynamicFeeAdjustment::calculate_adjusted_fee(
-            &config,
-            &metrics,
-            None,
-            1000,
-            false,
-        );
-        
+
+        let result =
+            DynamicFeeAdjustment::calculate_adjusted_fee(&config, &metrics, None, 1000, false);
+
         // Should be capped at max_fee_bps
         assert!(result.adjusted_fee_bps <= config.max_fee_bps);
     }
@@ -418,15 +407,10 @@ mod tests {
     fn test_calculate_adjusted_fee_respects_min_floor() {
         let config = create_test_config();
         let metrics = create_test_metrics(5, 100); // Very low congestion
-        
-        let result = DynamicFeeAdjustment::calculate_adjusted_fee(
-            &config,
-            &metrics,
-            None,
-            1000,
-            false,
-        );
-        
+
+        let result =
+            DynamicFeeAdjustment::calculate_adjusted_fee(&config, &metrics, None, 1000, false);
+
         // Should be at least min_fee_bps
         assert!(result.adjusted_fee_bps >= config.min_fee_bps);
     }
@@ -435,23 +419,13 @@ mod tests {
     fn test_emergency_override_caps_fees() {
         let config = create_test_config();
         let metrics = create_test_metrics(100, 5000);
-        
-        let result_no_override = DynamicFeeAdjustment::calculate_adjusted_fee(
-            &config,
-            &metrics,
-            None,
-            1000,
-            false,
-        );
-        
-        let result_with_override = DynamicFeeAdjustment::calculate_adjusted_fee(
-            &config,
-            &metrics,
-            None,
-            1000,
-            true,
-        );
-        
+
+        let result_no_override =
+            DynamicFeeAdjustment::calculate_adjusted_fee(&config, &metrics, None, 1000, false);
+
+        let result_with_override =
+            DynamicFeeAdjustment::calculate_adjusted_fee(&config, &metrics, None, 1000, true);
+
         // With override, fee should not exceed emergency cap
         assert!(result_with_override.adjusted_fee_bps <= config.emergency_fee_cap_bps);
         assert!(result_with_override.emergency_override_active);
@@ -460,7 +434,7 @@ mod tests {
     #[test]
     fn test_calculate_fee_impact() {
         let impact = DynamicFeeAdjustment::calculate_fee_impact(50, 125, 1_000_000);
-        
+
         // Original: 1,000,000 * 50 / 10000 = 5,000 stroops
         // Adjusted: 1,000,000 * 125 / 10000 = 12,500 stroops
         // Difference: 7,500 stroops (150% increase)
@@ -481,7 +455,7 @@ mod tests {
             timestamp: 1000,
             avg_confirmation_time_ms: 10000,
         };
-        
+
         assert!(DynamicFeeAdjustment::should_trigger_emergency_override(
             CongestionLevel::Critical,
             &metrics_critical_high_gas
@@ -499,7 +473,7 @@ mod tests {
             timestamp: 1000,
             avg_confirmation_time_ms: 5000,
         };
-        
+
         assert!(!DynamicFeeAdjustment::should_trigger_emergency_override(
             CongestionLevel::High,
             &metrics_high

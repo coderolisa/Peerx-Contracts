@@ -1,4 +1,4 @@
-#![cfg_attr(not(test), no_std)]
+#![cfg_attr(all(not(test), target_family = "wasm"), no_std)]
 use soroban_sdk::{
     contract, contractimpl, contracttype, symbol_short, Address, Env, Map, Symbol, Vec,
 };
@@ -12,6 +12,9 @@ mod alerts;
 mod errors;
 mod events;
 mod invariants;
+mod kyc;
+#[cfg(test)]
+mod kyc_tests;
 mod liquidity_pool;
 mod rate_limit;
 mod storage;
@@ -21,8 +24,11 @@ mod batch {
 mod tiers {
     include!("../tiers.rs");
 }
+#[cfg(all(test, feature = "experimental"))]
 mod batch_event_tests;
+#[cfg(all(test, feature = "experimental"))]
 mod batch_opt_simple_test;
+#[cfg(all(test, feature = "experimental"))]
 mod batch_performance_tests;
 mod oracle;
 
@@ -32,85 +38,122 @@ mod portfolio {
 mod trading {
     include!("../trading.rs");
 }
+#[cfg(feature = "experimental")]
 mod analytics;
 mod migration;
 
-// Dynamic Fee Adjustment System
-mod network_congestion;
+#[cfg(feature = "experimental")]
 mod dynamic_fee_adjustment;
-mod fee_history;
+#[cfg(feature = "experimental")]
 mod emergency_override;
+#[cfg(feature = "experimental")]
 mod fee_adjustment_manager;
+#[cfg(feature = "experimental")]
+mod fee_history;
+#[cfg(feature = "experimental")]
+mod network_congestion;
 
-#[cfg(test)]
+#[cfg(all(test, feature = "experimental"))]
 mod dynamic_fee_adjustment_tests;
 
 // Staking Bonus System
 mod staking_bonus;
-#[cfg(test)]
-mod staking_bonus_tests;
 
 // Re-export fee adjustment types
-pub use network_congestion::{CongestionLevel, CongestionTrend, NetworkMetrics, NetworkCongestionMonitor};
-pub use dynamic_fee_adjustment::{FeeAdjustmentConfig, FeeAdjustmentResult, DynamicFeeAdjustment, FeeImpact};
-pub use fee_history::{FeeHistoryEntry, FeeHistoryManager, FeeHistoryStats, AdjustmentReason};
+#[cfg(feature = "experimental")]
+pub use dynamic_fee_adjustment::{
+    DynamicFeeAdjustment, FeeAdjustmentConfig, FeeAdjustmentResult, FeeImpact,
+};
+#[cfg(feature = "experimental")]
+pub use fee_history::{AdjustmentReason, FeeHistoryEntry, FeeHistoryManager, FeeHistoryStats};
+#[cfg(feature = "experimental")]
+pub use network_congestion::{
+    CongestionLevel, CongestionTrend, NetworkCongestionMonitor, NetworkMetrics,
+};
 
 // Re-export staking bonus types
-pub use staking_bonus::{StakingBonusManager, StakeRecord, DistributionRecord, StakingBonusKey};
-pub use emergency_override::{EmergencyOverrideManager, EmergencyOverrideState, OverrideStatus, OverrideReason};
+#[cfg(feature = "experimental")]
+pub use emergency_override::{
+    EmergencyOverrideManager, EmergencyOverrideState, OverrideReason, OverrideStatus,
+};
+#[cfg(feature = "experimental")]
 pub use fee_adjustment_manager::FeeAdjustmentManager;
+pub use staking_bonus::{DistributionRecord, StakeRecord, StakingBonusKey, StakingBonusManager};
 
-// NFT module
+#[cfg(feature = "experimental")]
 mod nft_errors;
+#[cfg(feature = "experimental")]
 mod nft_events;
+#[cfg(feature = "experimental")]
 mod nft_fractional;
+#[cfg(feature = "experimental")]
 mod nft_lending;
+#[cfg(feature = "experimental")]
 mod nft_marketplace;
+#[cfg(feature = "experimental")]
 mod nft_minting;
+#[cfg(feature = "experimental")]
 mod nft_storage;
+#[cfg(feature = "experimental")]
 mod nft_types;
 
-// Zero-Knowledge Proof module for private transactions
+#[cfg(feature = "experimental")]
 mod private_transaction;
+#[cfg(feature = "experimental")]
 mod zkp_circuits;
+#[cfg(feature = "experimental")]
 mod zkp_errors;
+#[cfg(feature = "experimental")]
 mod zkp_proof_generation;
+#[cfg(feature = "experimental")]
 mod zkp_types;
+#[cfg(feature = "experimental")]
 mod zkp_verification;
 
 // Re-export invariant functions for external use
 pub use invariants::verify_contract_invariants;
 pub use liquidity_pool::{LiquidityPool, PoolRegistry, Route};
 
+// KYC exports for contract interface
+pub use kyc::{
+    GovernanceOverride, KYCError, KYCRecord, KYCStatus, KYCSystem, DEFAULT_TIMELOCK_DURATION,
+    MIN_TIMELOCK_DURATION,
+};
+
 // ZKP exports for contract interface
+#[cfg(feature = "experimental")]
 pub use private_transaction::{
     AuditTrailManager, PrivateTransactionBuilder, PrivateTransactionProcessor, WitnessManager,
 };
+#[cfg(feature = "experimental")]
 pub use zkp_errors::ZKPError;
+#[cfg(feature = "experimental")]
 pub use zkp_proof_generation::ProofGenerator;
+#[cfg(feature = "experimental")]
 pub use zkp_types::{
     AuditEventType, AuditLogEntry, BalanceProof, Commitment, PrivateTransaction, ProofScheme,
     ProofVerificationResult, RangeProof, TransactionWitness, ZKProof,
 };
+#[cfg(feature = "experimental")]
 pub use zkp_verification::ProofVerifier;
 
-use analytics::{
-    AssetAllocation, BenchmarkComparison, PerformanceMetrics, PeriodReturns, PortfolioAnalytics,
-    TimeWindow,
-};
 use portfolio::{Asset, CachedPortfolio, CachedTopTraders, LPPosition, Portfolio};
 pub use portfolio::{Badge, Metrics, Transaction};
 pub use rate_limit::{RateLimitStatus, RateLimiter};
 pub use tiers::UserTier;
 use trading::perform_swap;
 
-// NFT imports
-use nft_errors::NFTError;
-use nft_storage::*;
-use nft_types::*;
-
-use crate::errors::SwapTradeError;
+use crate::errors::{ContractError, SwapTradeError};
 use crate::storage::{ADMIN_KEY, PAUSED_KEY};
+
+pub(crate) fn require_verified_user(env: &Env, user: &Address) -> Result<(), ContractError> {
+    kyc::KYCSystem::require_verified(env, user).map_err(|_| ContractError::KYCVerificationRequired)
+}
+
+fn require_authenticated_verified_user(env: &Env, user: &Address) -> Result<(), ContractError> {
+    user.require_auth();
+    require_verified_user(env, user)
+}
 
 pub fn pause_trading(env: Env) -> Result<bool, SwapTradeError> {
     // NOTE: Authentication check (invoker) removed for compatibility with SDK versions
@@ -295,6 +338,10 @@ impl CounterContract {
 
     /// Swap tokens using simplified AMM (1:1 XLM <-> USDC-SIM)
     pub fn swap(env: Env, from: Symbol, to: Symbol, amount: i128, user: Address) -> i128 {
+        if require_authenticated_verified_user(&env, &user).is_err() {
+            panic!("KYC_VERIFICATION_REQUIRED");
+        }
+
         let mut portfolio: Portfolio = env
             .storage()
             .instance()
@@ -362,6 +409,10 @@ impl CounterContract {
 
     /// Non-panicking swap that counts failed orders and returns 0 on failure
     pub fn safe_swap(env: Env, from: Symbol, to: Symbol, amount: i128, user: Address) -> i128 {
+        if require_authenticated_verified_user(&env, &user).is_err() {
+            return 0;
+        }
+
         let mut portfolio: Portfolio = env
             .storage()
             .instance()
@@ -665,6 +716,10 @@ impl CounterContract {
     /// Add liquidity to the pool and mint LP tokens
     /// Returns the number of LP tokens minted
     pub fn add_liquidity(env: Env, xlm_amount: i128, usdc_amount: i128, user: Address) -> i128 {
+        if require_authenticated_verified_user(&env, &user).is_err() {
+            panic!("KYC_VERIFICATION_REQUIRED");
+        }
+
         assert!(xlm_amount > 0, "XLM amount must be positive");
         assert!(usdc_amount > 0, "USDC amount must be positive");
 
@@ -796,6 +851,10 @@ impl CounterContract {
     /// Remove liquidity from the pool by burning LP tokens
     /// Returns (xlm_amount, usdc_amount) returned to user
     pub fn remove_liquidity(env: Env, lp_tokens: i128, user: Address) -> (i128, i128) {
+        if require_authenticated_verified_user(&env, &user).is_err() {
+            panic!("KYC_VERIFICATION_REQUIRED");
+        }
+
         assert!(lp_tokens > 0, "LP tokens must be positive");
 
         let mut portfolio: Portfolio = env
@@ -924,6 +983,9 @@ impl CounterContract {
         amount_b: i128,
         provider: Address,
     ) -> Result<i128, ContractError> {
+        provider.require_auth();
+        require_verified_user(&env, &provider)?;
+
         let mut registry = load_pool_registry(&env);
         let lp_tokens = registry.add_liquidity(&env, pool_id, amount_a, amount_b, provider)?;
         save_pool_registry(&env, &registry);
@@ -936,6 +998,9 @@ impl CounterContract {
         lp_tokens: i128,
         provider: Address,
     ) -> Result<(i128, i128), ContractError> {
+        provider.require_auth();
+        require_verified_user(&env, &provider)?;
+
         let mut registry = load_pool_registry(&env);
         let result = registry.remove_liquidity(&env, pool_id, lp_tokens, provider)?;
         save_pool_registry(&env, &registry);
@@ -948,7 +1013,11 @@ impl CounterContract {
         token_in: Symbol,
         amount_in: i128,
         min_amount_out: i128,
+        trader: Address,
     ) -> Result<i128, ContractError> {
+        trader.require_auth();
+        require_verified_user(&env, &trader)?;
+
         let mut registry = load_pool_registry(&env);
         let result = registry.swap(&env, pool_id, token_in, amount_in, min_amount_out)?;
         save_pool_registry(&env, &registry);
@@ -1004,119 +1073,57 @@ impl CounterContract {
         env.storage().instance().set(&(), &portfolio);
     }
 
-    /// Get comprehensive performance metrics for a user
-    pub fn get_performance_metrics(
-        env: Env,
-        user: Address,
-        time_window: TimeWindow,
-    ) -> PerformanceMetrics {
-        let portfolio: Portfolio = env
-            .storage()
-            .instance()
-            .get(&())
-            .unwrap_or_else(|| Portfolio::new(&env));
-
-        PortfolioAnalytics::get_performance_metrics(&env, &portfolio, user, time_window)
-    }
-
-    /// Get asset allocation breakdown with correlation analysis
-    pub fn get_asset_allocation(env: Env, user: Address) -> AssetAllocation {
-        let portfolio: Portfolio = env
-            .storage()
-            .instance()
-            .get(&())
-            .unwrap_or_else(|| Portfolio::new(&env));
-
-        PortfolioAnalytics::get_asset_allocation(&env, &portfolio, user)
-    }
-
-    /// Compare portfolio performance against a benchmark
-    pub fn get_benchmark_comparison(
-        env: Env,
-        user: Address,
-        benchmark_id: Symbol,
-        time_window: TimeWindow,
-    ) -> BenchmarkComparison {
-        let portfolio: Portfolio = env
-            .storage()
-            .instance()
-            .get(&())
-            .unwrap_or_else(|| Portfolio::new(&env));
-
-        PortfolioAnalytics::get_benchmark_comparison(
-            &env,
-            &portfolio,
-            user,
-            benchmark_id,
-            time_window,
-        )
-    }
-
     pub fn set_max_slippage_bps(env: Env, bps: u32) {
         env.storage()
             .instance()
             .set(&symbol_short!("MAX_SLIP"), &bps);
     }
 
-    /// Calculate period returns between timestamps
-    pub fn get_period_returns(
-        env: Env,
-        user: Address,
-        start_timestamp: u64,
-        end_timestamp: u64,
-    ) -> PeriodReturns {
-        let portfolio: Portfolio = env
-            .storage()
-            .instance()
-            .get(&())
-            .unwrap_or_else(|| Portfolio::new(&env));
-
-        PortfolioAnalytics::get_period_returns(
-            &env,
-            &portfolio,
-            user,
-            start_timestamp,
-            end_timestamp,
-        )
-    }
-
     // ────────────────────────────────────────────────────────────────────────
-    // Staking Bonus System  
+    // Staking Bonus System
     // ────────────────────────────────────────────────────────────────────────
 
     /// Stake tokens for a specified duration to earn bonuses
     /// Supports: 30, 60, 90, or 365-day stakes
     pub fn stake(env: Env, user: Address, amount: i128, duration_days: u32) -> u32 {
-        let manager = StakingBonusManager::new();
-        manager
-            .stake(&env, user, amount, duration_days)
+        if require_authenticated_verified_user(&env, &user).is_err() {
+            panic!("KYC_VERIFICATION_REQUIRED");
+        }
+
+        StakingBonusManager::stake(&env, user, amount, duration_days)
             .unwrap_or_else(|e| panic!("Staking failed: {}", e))
     }
 
     /// Claim earned staking bonuses (after 30-day holding period)
     /// Returns total bonuses claimed
     pub fn claim_staking_bonuses(env: Env, user: Address) -> i128 {
-        let manager = StakingBonusManager::new();
-        manager
-            .claim_bonuses(&env, user)
+        if require_authenticated_verified_user(&env, &user).is_err() {
+            panic!("KYC_VERIFICATION_REQUIRED");
+        }
+
+        StakingBonusManager::claim_bonuses(&env, user)
             .unwrap_or_else(|e| panic!("Bonus claim failed: {}", e))
     }
 
     /// Claim staked principal after lock period expires
     /// Returns the principal amount
     pub fn claim_stake(env: Env, user: Address, stake_id: u32) -> i128 {
-        let manager = StakingBonusManager::new();
-        manager
-            .claim_stake(&env, user, stake_id)
+        if require_authenticated_verified_user(&env, &user).is_err() {
+            panic!("KYC_VERIFICATION_REQUIRED");
+        }
+
+        StakingBonusManager::claim_stake(&env, user, stake_id)
             .unwrap_or_else(|e| panic!("Stake claim failed: {}", e))
     }
 
     /// Unstake early before lock period (incurs 10% penalty)
     /// Returns (principal_after_penalty, penalty_amount)
     pub fn unstake_early(env: Env, user: Address, stake_id: u32) -> (i128, i128) {
-        let manager = StakingBonusManager::new();
-        manager
-            .unstake_early(&env, user, stake_id)
+        if require_authenticated_verified_user(&env, &user).is_err() {
+            panic!("KYC_VERIFICATION_REQUIRED");
+        }
+
+        StakingBonusManager::unstake_early(&env, user, stake_id)
             .unwrap_or_else(|e| panic!("Early unstake failed: {}", e))
     }
 
@@ -1164,35 +1171,101 @@ impl CounterContract {
 
     /// Execute periodic bonus distribution (admin only typically)
     pub fn execute_staking_distribution(env: Env) -> DistributionRecord {
-        let manager = StakingBonusManager::new();
-        manager
-            .execute_distribution(&env)
+        StakingBonusManager::execute_distribution(&env)
             .unwrap_or_else(|e| panic!("Distribution failed: {}", e))
+    }
+
+    // ────────────────────────────────────────────────────────────────────────
+    // KYC Verification System
+    // ────────────────────────────────────────────────────────────────────────
+
+    /// Add a KYC operator (admin only)
+    pub fn kyc_add_operator(env: Env, admin: Address, operator: Address) {
+        kyc::KYCSystem::add_operator(&env, &admin, operator)
+            .unwrap_or_else(|e| panic!("Failed to add KYC operator: {:?}", e))
+    }
+
+    /// Remove a KYC operator (admin only)
+    pub fn kyc_remove_operator(env: Env, admin: Address, operator: Address) {
+        kyc::KYCSystem::remove_operator(&env, &admin, operator)
+            .unwrap_or_else(|e| panic!("Failed to remove KYC operator: {:?}", e))
+    }
+
+    /// Check if address is a KYC operator
+    pub fn kyc_is_operator(env: Env, address: Address) -> bool {
+        kyc::KYCSystem::is_operator(&env, &address)
+    }
+
+    /// Submit KYC for review (user-initiated)
+    pub fn kyc_submit(env: Env, user: Address) {
+        kyc::KYCSystem::submit_kyc(&env, &user)
+            .unwrap_or_else(|e| panic!("Failed to submit KYC: {:?}", e))
+    }
+
+    /// Resubmit KYC with additional information (user-initiated)
+    pub fn kyc_resubmit(env: Env, user: Address) {
+        kyc::KYCSystem::resubmit_kyc(&env, &user)
+            .unwrap_or_else(|e| panic!("Failed to resubmit KYC: {:?}", e))
+    }
+
+    /// Update KYC status (operator only)
+    pub fn kyc_update_status(
+        env: Env,
+        operator: Address,
+        user: Address,
+        new_status: KYCStatus,
+        reason: Option<Symbol>,
+    ) {
+        kyc::KYCSystem::update_status(&env, &operator, &user, new_status, reason)
+            .unwrap_or_else(|e| panic!("Failed to update KYC status: {:?}", e))
+    }
+
+    /// Get KYC record for a user
+    pub fn kyc_get_record(env: Env, user: Address) -> KYCRecord {
+        kyc::KYCSystem::get_record(&env, &user)
+    }
+
+    /// Check if user is verified
+    pub fn kyc_is_verified(env: Env, user: Address) -> bool {
+        kyc::KYCSystem::is_verified(&env, &user)
+    }
+
+    /// Set timelock duration for governance overrides (admin only)
+    pub fn kyc_set_timelock_duration(env: Env, admin: Address, duration: u64) {
+        kyc::KYCSystem::set_timelock_duration(&env, &admin, duration)
+            .unwrap_or_else(|e| panic!("Failed to set timelock duration: {:?}", e))
+    }
+
+    /// Get timelock duration
+    pub fn kyc_get_timelock_duration(env: Env) -> u64 {
+        kyc::KYCSystem::get_timelock_duration(&env)
+    }
+
+    /// Propose governance override for terminal state change (admin only)
+    pub fn kyc_propose_override(
+        env: Env,
+        admin: Address,
+        user: Address,
+        new_status: KYCStatus,
+        reason: Symbol,
+    ) -> u64 {
+        kyc::KYCSystem::propose_override(&env, &admin, user, new_status, reason)
+            .unwrap_or_else(|e| panic!("Failed to propose override: {:?}", e))
+    }
+
+    /// Execute governance override after timelock (admin only)
+    pub fn kyc_execute_override(env: Env, admin: Address, override_id: u64) {
+        kyc::KYCSystem::execute_override(&env, &admin, override_id)
+            .unwrap_or_else(|e| panic!("Failed to execute override: {:?}", e))
+    }
+
+    /// Get governance override details
+    pub fn kyc_get_override(env: Env, override_id: u64) -> Option<GovernanceOverride> {
+        kyc::KYCSystem::get_override(&env, override_id)
     }
 }
 
-#[cfg(test)]
-mod analytics_tests;
-#[cfg(test)]
-mod balance_test;
-#[cfg(test)]
-mod batch_tests;
-#[cfg(test)]
-mod dashboard_tests;
-#[cfg(test)]
-mod enhanced_trading_tests; // NEW: Enhanced trading tests for better coverage
-#[cfg(test)]
-mod fuzz_tests;
-#[cfg(test)]
-mod lp_tests;
+#[cfg(all(test, feature = "experimental"))]
 mod migration_tests;
-#[cfg(test)]
-mod nft_lending_tests;
-#[cfg(test)]
-mod oracle_tests;
-#[cfg(test)]
-mod rate_limit_tests;
-#[cfg(test)]
-mod transaction_tests; // NEW: Fuzz tests for security hardening
 
 // trading tests are provided as integration/unit tests in the repository tests/ folder

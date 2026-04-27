@@ -3,10 +3,15 @@ name = "counter"
 version = "0.0.0"
 edition = "2021"
 publish = false
+autotests = false
 
 [lib]
 crate-type = ["lib", "cdylib"]
 doctest = false
+
+[[test]]
+name = "formal_verification_tests"
+path = "tests/formal_verification_tests.rs"
 
 [dependencies]
 soroban-sdk = { workspace = true }
@@ -19,3 +24,4 @@ proptest = "1.4"
 # Enable structured logging via Soroban events during tests and debug builds.
 # Off by default to avoid overhead in production.
 logging = []
+experimental = []

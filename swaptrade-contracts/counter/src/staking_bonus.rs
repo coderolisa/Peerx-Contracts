@@ -1,19 +1,17 @@
 /// Staking Bonus System
-/// 
+///
 /// Provides long-term staking bonuses with:
 /// - Duration-based calculations
 /// - Periodic distribution
 /// - Time locks for security
 /// - Full transparency and auditability
-/// 
+///
 /// Bonus Tiers:
 /// - 30 days:  5% bonus
 /// - 60 days:  12% bonus
 /// - 90 days:  20% bonus
 /// - 365 days: 50% bonus
-
-use soroban_sdk::{contracttype, Address, Env, Map, Symbol, Vec, symbol_short};
-use alloc::vec;
+use soroban_sdk::{contracttype, symbol_short, Address, Env, Vec};
 
 // ────────────────────────────────────────────────────────────────────────────
 // Constants
@@ -87,7 +85,7 @@ pub struct DistributionRecord {
 }
 
 /// Storage keys for staking bonus data
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 #[contracttype]
 pub enum StakingBonusKey {
     /// User's current stakes (Address, Vec<StakeRecord>)
@@ -114,7 +112,6 @@ pub enum StakingBonusKey {
 
 /// Manages staking bonuses with time locks and distribution
 #[derive(Clone)]
-#[contracttype]
 pub struct StakingBonusManager {
     // Storage is handled via env.storage().persistent() to maintain state
 }
@@ -130,13 +127,13 @@ impl StakingBonusManager {
     // ────────────────────────────────────────────────────────────────────────
 
     /// Stake tokens for a specified duration
-    /// 
+    ///
     /// # Arguments
     /// * `env` - Contract environment
     /// * `user` - Address of staker
     /// * `amount` - Amount to stake
     /// * `duration_days` - Duration (30, 60, 90, or 365)
-    /// 
+    ///
     /// # Returns
     /// Result with stake ID or error message
     pub fn stake(
@@ -145,8 +142,6 @@ impl StakingBonusManager {
         amount: i128,
         duration_days: u32,
     ) -> Result<u32, String> {
-        user.require_auth();
-
         if amount <= 0 {
             return Err("Amount must be positive".into());
         }
@@ -210,9 +205,10 @@ impl StakingBonusManager {
             .get(&StakingBonusKey::UserTotalStaked(user.clone()))
             .unwrap_or(0);
 
-        env.storage()
-            .persistent()
-            .set(&StakingBonusKey::UserTotalStaked(user.clone()), &(prev_total + amount));
+        env.storage().persistent().set(
+            &StakingBonusKey::UserTotalStaked(user.clone()),
+            &(prev_total + amount),
+        );
 
         // Update global totals
         let prev_global: i128 = env
@@ -227,39 +223,34 @@ impl StakingBonusManager {
 
         // Emit event
         env.events().publish(
-            (symbol_short!("stake"), user.clone(), duration_days, amount, bonus_bps),
+            (symbol_short!("stake"), user.clone()),
+            (duration_days, amount, bonus_bps),
         );
 
         Ok(stake_id)
     }
 
     /// Unstake tokens before lock expiry (with penalty)
-    /// 
+    ///
     /// # Arguments
     /// * `env` - Contract environment
     /// * `user` - Address of staker
     /// * `stake_id` - ID of stake to unstake
-    /// 
+    ///
     /// # Returns
     /// Result with (principal_returned, penalty) or error
-    pub fn unstake_early(
-        env: &Env,
-        user: Address,
-        stake_id: u32,
-    ) -> Result<(i128, i128), String> {
-        user.require_auth();
-
+    pub fn unstake_early(env: &Env, user: Address, stake_id: u32) -> Result<(i128, i128), String> {
         let mut stakes: Vec<StakeRecord> = env
             .storage()
             .persistent()
             .get(&StakingBonusKey::UserStakes(user.clone()))
             .ok_or("No stakes found for user")?;
 
-        if (stake_id as usize) >= stakes.len() {
+        if stake_id >= stakes.len() {
             return Err("Invalid stake ID".into());
         }
 
-        let mut stake = stakes.get(stake_id as usize).ok_or("Stake not found")?;
+        let mut stake = stakes.get(stake_id).ok_or("Stake not found")?;
 
         if !stake.is_active {
             return Err("Stake is not active".into());
@@ -268,10 +259,11 @@ impl StakingBonusManager {
         // Calculate penalty: 10% of principal
         let penalty = (stake.amount * 10) / 100;
         let principal_returned = stake.amount - penalty;
+        let staked_amount = stake.amount;
 
         // Mark stake as inactive
         stake.is_active = false;
-        stakes.set(stake_id as usize, stake);
+        stakes.set(stake_id, stake);
 
         // Update storage
         env.storage()
@@ -287,7 +279,7 @@ impl StakingBonusManager {
 
         env.storage().persistent().set(
             &StakingBonusKey::UserTotalStaked(user.clone()),
-            &(prev_total - stake.amount),
+            &(prev_total - staked_amount),
         );
 
         // Update global total
@@ -297,13 +289,15 @@ impl StakingBonusManager {
             .get(&StakingBonusKey::TotalStaked)
             .unwrap_or(0);
 
-        env.storage()
-            .persistent()
-            .set(&StakingBonusKey::TotalStaked, &(prev_global - stake.amount));
+        env.storage().persistent().set(
+            &StakingBonusKey::TotalStaked,
+            &(prev_global - staked_amount),
+        );
 
         // Emit event
         env.events().publish(
-            (symbol_short!("unstake_early"), user.clone(), stake_id, penalty),
+            (symbol_short!("unstk_erl"), user.clone()),
+            (stake_id, penalty),
         );
 
         Ok((principal_returned, penalty))
@@ -314,16 +308,14 @@ impl StakingBonusManager {
     // ────────────────────────────────────────────────────────────────────────
 
     /// Claim staking bonuses (after holding period)
-    /// 
+    ///
     /// # Arguments
     /// * `env` - Contract environment
     /// * `user` - Address of claimant
-    /// 
+    ///
     /// # Returns
     /// Result with total bonuses claimed or error
     pub fn claim_bonuses(env: &Env, user: Address) -> Result<i128, String> {
-        user.require_auth();
-
         let mut stakes: Vec<StakeRecord> = env
             .storage()
             .persistent()
@@ -383,34 +375,32 @@ impl StakingBonusManager {
 
         // Emit event
         env.events()
-            .publish((symbol_short!("claim_bonus"), user.clone(), total_claimed));
+            .publish((symbol_short!("claim_bns"), user.clone()), total_claimed);
 
         Ok(total_claimed)
     }
 
     /// Claim stake after lock period expires
-    /// 
+    ///
     /// # Arguments
     /// * `env` - Contract environment
     /// * `user` - Address of claimant
     /// * `stake_id` - ID of stake to claim
-    /// 
+    ///
     /// # Returns
     /// Result with principal amount or error
     pub fn claim_stake(env: &Env, user: Address, stake_id: u32) -> Result<i128, String> {
-        user.require_auth();
-
         let mut stakes: Vec<StakeRecord> = env
             .storage()
             .persistent()
             .get(&StakingBonusKey::UserStakes(user.clone()))
             .ok_or("No stakes found for user")?;
 
-        if (stake_id as usize) >= stakes.len() {
+        if stake_id >= stakes.len() {
             return Err("Invalid stake ID".into());
         }
 
-        let mut stake = stakes.get(stake_id as usize).ok_or("Stake not found")?;
+        let mut stake = stakes.get(stake_id).ok_or("Stake not found")?;
 
         if !stake.is_active {
             return Err("Stake is not active".into());
@@ -428,7 +418,7 @@ impl StakingBonusManager {
 
         // Mark stake as inactive
         stake.is_active = false;
-        stakes.set(stake_id as usize, stake);
+        stakes.set(stake_id, stake);
 
         // Update storage
         env.storage()
@@ -459,8 +449,10 @@ impl StakingBonusManager {
             .set(&StakingBonusKey::TotalStaked, &(prev_global - principal));
 
         // Emit event
-        env.events()
-            .publish((symbol_short!("claim_stake"), user.clone(), stake_id, principal));
+        env.events().publish(
+            (symbol_short!("claim_stk"), user.clone()),
+            (stake_id, principal),
+        );
 
         Ok(principal)
     }
@@ -471,10 +463,10 @@ impl StakingBonusManager {
 
     /// Execute periodic bonus distribution
     /// Distributes accrued bonuses to all eligible stakers
-    /// 
+    ///
     /// # Arguments
     /// * `env` - Contract environment
-    /// 
+    ///
     /// # Returns
     /// Result with distribution summary or error
     pub fn execute_distribution(env: &Env) -> Result<DistributionRecord, String> {
@@ -530,12 +522,10 @@ impl StakingBonusManager {
             .set(&StakingBonusKey::LastDistributionTime, &current_time);
 
         // Emit event
-        env.events().publish((
-            symbol_short!("distribution"),
-            current_time,
-            total_distributed,
-            recipient_count,
-        ));
+        env.events().publish(
+            (symbol_short!("distrbute"),),
+            (current_time, total_distributed, recipient_count),
+        );
 
         Ok(distribution_record)
     }
@@ -598,16 +588,18 @@ impl StakingBonusManager {
     }
 
     /// Get individual stake details
-    pub fn get_stake_details(env: &Env, user: Address, stake_id: u32) -> Result<StakeRecord, String> {
+    pub fn get_stake_details(
+        env: &Env,
+        user: Address,
+        stake_id: u32,
+    ) -> Result<StakeRecord, String> {
         let stakes = Self::get_user_stakes(env, user);
 
-        if (stake_id as usize) >= stakes.len() {
+        if stake_id >= stakes.len() {
             return Err("Invalid stake ID".into());
         }
 
-        stakes
-            .get(stake_id as usize)
-            .ok_or("Stake not found".into())
+        stakes.get(stake_id).ok_or("Stake not found".into())
     }
 
     /// Get global statistics
@@ -630,7 +622,11 @@ impl StakingBonusManager {
             .get(&StakingBonusKey::DistributionRecords)
             .unwrap_or_else(|| Vec::new(env));
 
-        (total_staked, total_distributed, distribution_records.len() as u64)
+        (
+            total_staked,
+            total_distributed,
+            distribution_records.len() as u64,
+        )
     }
 
     /// Get distribution history
