@@ -268,6 +268,10 @@ pub struct MultiSigProposal {
     pub approvals: HashSet<String>,
     pub executed: bool,
     pub rejected: bool,
+    /// Minimum signatures required for execution
+    pub required_signatures: usize,
+    /// Total authorized signers at time of creation
+    pub total_signers: usize,
 }
 
 impl MultiSigProposal {
@@ -276,7 +280,7 @@ impl MultiSigProposal {
     }
 
     pub fn is_approved(&self) -> bool {
-        self.approvals.len() >= MULTISIG_THRESHOLD
+        self.approvals.len() >= self.required_signatures
     }
 }
 
@@ -330,6 +334,8 @@ impl MultiSigCoordinator {
             approvals,
             executed: false,
             rejected: false,
+            required_signatures: MULTISIG_THRESHOLD,
+            total_signers: self.authorized_signers.len(),
         });
 
         Ok(proposal_id)
@@ -347,6 +353,11 @@ impl MultiSigCoordinator {
         if proposal.executed { return Err("Already executed".into()); }
         if proposal.rejected { return Err("Proposal rejected".into()); }
 
+        // Prevent duplicate signatures
+        if proposal.approvals.contains(&signer) {
+            return Err(format!("'{}' has already approved this proposal", signer));
+        }
+
         proposal.approvals.insert(signer);
         Ok(proposal.approvals.len())
     }
@@ -359,7 +370,7 @@ impl MultiSigCoordinator {
         if proposal.rejected { return Err("Proposal rejected".into()); }
         if !proposal.is_approved() {
             return Err(format!(
-                "Insufficient approvals: {}/{}", proposal.approval_count(), MULTISIG_THRESHOLD
+                "Insufficient approvals: {}/{}", proposal.approval_count(), proposal.required_signatures
             ));
         }
 

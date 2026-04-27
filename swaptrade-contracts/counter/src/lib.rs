@@ -17,6 +17,9 @@ mod kyc;
 mod kyc_tests;
 mod liquidity_pool;
 mod rate_limit;
+mod state_snapshot;
+#[cfg(test)]
+mod state_snapshot_tests;
 mod storage;
 mod batch {
     include!("../batch.rs");
