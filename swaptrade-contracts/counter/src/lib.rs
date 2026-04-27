@@ -5,6 +5,9 @@ use soroban_sdk::{
 
 // Bring in modules from parent directory
 mod admin;
+mod bridge;
+#[cfg(test)]
+mod alert_tests;
 mod alerts;
 mod errors;
 mod events;
