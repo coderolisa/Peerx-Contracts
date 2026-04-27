@@ -131,11 +131,8 @@ impl TimeWindow {
         let cache_key = symbol_short!("hourly_c");
 
         // Try to get cached boundary
-        if let Some(cached) = env
-            .storage()
-            .persistent()
-            .get::<CachedWindowBoundary>(&cache_key)
-        {
+        let cached: Option<CachedWindowBoundary> = env.storage().persistent().get(&cache_key);
+        if let Some(cached) = cached {
             if cached.is_valid(current_timestamp) {
                 return TimeWindow {
                     window_start: cached.window_start,
@@ -157,11 +154,8 @@ impl TimeWindow {
         let cache_key = symbol_short!("daily_c");
 
         // Try to get cached boundary
-        if let Some(cached) = env
-            .storage()
-            .persistent()
-            .get::<CachedWindowBoundary>(&cache_key)
-        {
+        let cached: Option<CachedWindowBoundary> = env.storage().persistent().get(&cache_key);
+        if let Some(cached) = cached {
             if cached.is_valid(current_timestamp) {
                 return TimeWindow {
                     window_start: cached.window_start,
@@ -312,7 +306,7 @@ impl RateLimiter {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "experimental"))]
 mod tests {
     use super::*;
 

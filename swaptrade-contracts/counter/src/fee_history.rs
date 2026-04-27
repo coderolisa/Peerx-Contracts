@@ -1,6 +1,6 @@
-use soroban_sdk::{contracttype, Env, Symbol, symbol_short, Vec, Map, Address};
-use crate::network_congestion::{CongestionLevel, NetworkMetrics};
 use crate::dynamic_fee_adjustment::FeeAdjustmentResult;
+use crate::network_congestion::{CongestionLevel, NetworkMetrics};
+use soroban_sdk::{contracttype, symbol_short, Address, Env, Map, Symbol, Vec};
 
 /// Fee history entry recording a fee adjustment event
 #[derive(Clone, Debug)]
@@ -8,22 +8,22 @@ use crate::dynamic_fee_adjustment::FeeAdjustmentResult;
 pub struct FeeHistoryEntry {
     /// Timestamp when fee was set
     pub timestamp: u64,
-    
+
     /// Fee in basis points
     pub fee_bps: u32,
-    
+
     /// Previous fee in basis points
     pub previous_fee_bps: u32,
-    
+
     /// Congestion level at time of adjustment
     pub congestion_level: CongestionLevel,
-    
+
     /// Network metrics snapshot at time of adjustment
     pub network_metrics: NetworkMetrics,
-    
+
     /// Reason for fee adjustment
     pub adjustment_reason: AdjustmentReason,
-    
+
     /// Who triggered the adjustment (admin address or system)
     pub triggered_by: Symbol,
 }
@@ -34,19 +34,19 @@ pub struct FeeHistoryEntry {
 pub enum AdjustmentReason {
     /// Automatic adjustment due to congestion change
     AutomaticCongestionAdjustment,
-    
+
     /// Manual adjustment by administrator
     ManualAdminAdjustment,
-    
+
     /// Emergency override applied
     EmergencyOverride,
-    
+
     /// Recovery from emergency override
     EmergencyRecovery,
-    
+
     /// Scheduled maintenance adjustment
     ScheduledMaintenance,
-    
+
     /// System initialization
     SystemInitialization,
 }
@@ -57,25 +57,25 @@ pub enum AdjustmentReason {
 pub struct FeeHistoryStats {
     /// Average fee over the period (in basis points)
     pub avg_fee_bps: u32,
-    
+
     /// Minimum fee in the period
     pub min_fee_bps: u32,
-    
+
     /// Maximum fee in the period
     pub max_fee_bps: u32,
-    
+
     /// Total number of fee adjustments
     pub adjustment_count: u32,
-    
+
     /// Number of days in the analysis period
     pub period_days: u32,
-    
+
     /// Standard deviation of fees (measure of volatility)
     pub fee_volatility: u32,
-    
+
     /// Number of times emergency override was triggered
     pub emergency_override_count: u32,
-    
+
     /// Time period covered (in seconds)
     pub period_seconds: u64,
 }
@@ -86,10 +86,10 @@ pub struct FeeHistoryStats {
 pub struct FeeSnapshot {
     /// Timestamp of snapshot
     pub timestamp: u64,
-    
+
     /// Fee at this time
     pub fee_bps: u32,
-    
+
     /// Congestion level
     pub congestion_level: CongestionLevel,
 }
@@ -100,19 +100,19 @@ pub struct FeeHistoryManager;
 impl FeeHistoryManager {
     /// Storage key for fee history log (Vec of FeeHistoryEntry)
     pub const HISTORY_LOG_KEY: Symbol = symbol_short!("fhstlog");
-    
+
     /// Storage key for current fees by user (Map<Address, FeeSnapshot>)
     pub const USER_FEES_KEY: Symbol = symbol_short!("usrfees");
-    
+
     /// Storage key for global fee statistics
     pub const STATS_KEY: Symbol = symbol_short!("fstats");
-    
+
     /// Storage key for fee adjustment events buffer
     pub const EVENTS_BUFFER_KEY: Symbol = symbol_short!("fevtbuf");
-    
+
     /// Maximum history entries to keep in memory (to limit storage)
     const MAX_HISTORY_ENTRIES: usize = 10000;
-    
+
     /// Time window for statistics calculation (in seconds)
     const STATS_WINDOW_SECONDS: u64 = 86400; // 24 hours
 
@@ -157,11 +157,7 @@ impl FeeHistoryManager {
     }
 
     /// Get fee history entries within a time range
-    pub fn get_history_range(
-        env: &Env,
-        start_time: u64,
-        end_time: u64,
-    ) -> Vec<FeeHistoryEntry> {
+    pub fn get_history_range(env: &Env, start_time: u64, end_time: u64) -> Vec<FeeHistoryEntry> {
         let history: Vec<FeeHistoryEntry> = env
             .storage()
             .persistent()
@@ -199,7 +195,11 @@ impl FeeHistoryManager {
     }
 
     /// Calculate fee statistics for a time period
-    pub fn calculate_statistics(env: &Env, period_seconds: u64, current_time: u64) -> FeeHistoryStats {
+    pub fn calculate_statistics(
+        env: &Env,
+        period_seconds: u64,
+        current_time: u64,
+    ) -> FeeHistoryStats {
         let start_time = current_time.saturating_sub(period_seconds);
         let history = Self::get_history_range(env, start_time, current_time);
 
@@ -225,7 +225,7 @@ impl FeeHistoryManager {
             total_fee += entry.fee_bps as u64;
             min_fee = min_fee.min(entry.fee_bps);
             max_fee = max_fee.max(entry.fee_bps);
-            
+
             if entry.adjustment_reason == AdjustmentReason::EmergencyOverride {
                 emergency_count += 1;
             }
@@ -296,7 +296,7 @@ impl FeeHistoryManager {
             .unwrap_or_else(|| Vec::new(env));
 
         let total_pages = (history.len() as u32 + page_size - 1) / page_size;
-        
+
         if page >= total_pages && total_pages > 0 {
             return (Vec::new(env), total_pages);
         }
@@ -313,12 +313,9 @@ impl FeeHistoryManager {
     }
 
     /// Export fee history as CSV-like format for external analysis
-    pub fn get_history_summary(
-        env: &Env,
-        num_entries: u32,
-    ) -> Vec<(u64, u32, Symbol)> {
+    pub fn get_history_summary(env: &Env, num_entries: u32) -> Vec<(u64, u32, Symbol)> {
         let history = Self::get_recent_history(env, num_entries);
-        
+
         let mut result = Vec::new(env);
         for entry in history.iter() {
             result.push_back((

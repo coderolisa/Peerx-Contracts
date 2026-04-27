@@ -1,4 +1,4 @@
-use soroban_sdk::{contracttype, Env, Symbol, symbol_short};
+use soroban_sdk::{contracttype, symbol_short, Env, Symbol};
 
 /// Network congestion level enum for categorizing congestion severity
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -66,22 +66,22 @@ pub struct NetworkCongestionConstants;
 impl NetworkCongestionConstants {
     /// Maximum transactions per second the network can handle
     pub const MAX_TXN_CAPACITY_TPS: u64 = 1000;
-    
+
     /// Minimum gas price for transactions (in stroops)
     pub const MIN_GAS_PRICE: u64 = 100;
-    
+
     /// Maximum gas price threshold (triggering critical congestion)
     pub const CRITICAL_GAS_PRICE: u64 = 5000;
-    
+
     /// High congestion threshold (stroops)
     pub const HIGH_GAS_PRICE: u64 = 3000;
-    
+
     /// Pending transaction queue threshold
     pub const HIGH_PENDING_TXN_THRESHOLD: u64 = 5000;
-    
+
     /// Critical pending transaction threshold
     pub const CRITICAL_PENDING_TXN_THRESHOLD: u64 = 10000;
-    
+
     /// Capacity utilization levels
     pub const VERY_LOW_CAPACITY_THRESHOLD: u32 = 20;
     pub const LOW_CAPACITY_THRESHOLD: u32 = 40;
@@ -95,10 +95,10 @@ pub struct NetworkCongestionMonitor;
 impl NetworkCongestionMonitor {
     /// Storage key for current network metrics
     pub const METRICS_KEY: Symbol = symbol_short!("metrics");
-    
+
     /// Storage key for historical data points
     pub const HISTORY_KEY: Symbol = symbol_short!("hist");
-    
+
     /// Storage key for last recorded congestion level
     pub const LAST_LEVEL_KEY: Symbol = symbol_short!("lstlvl");
 
@@ -142,7 +142,8 @@ impl NetworkCongestionMonitor {
             p if p <= NetworkCongestionConstants::MIN_GAS_PRICE => 0,
             p if p >= NetworkCongestionConstants::CRITICAL_GAS_PRICE => 100,
             p => {
-                let range = NetworkCongestionConstants::CRITICAL_GAS_PRICE - NetworkCongestionConstants::MIN_GAS_PRICE;
+                let range = NetworkCongestionConstants::CRITICAL_GAS_PRICE
+                    - NetworkCongestionConstants::MIN_GAS_PRICE;
                 let diff = p - NetworkCongestionConstants::MIN_GAS_PRICE;
                 ((diff as u128 * 100) / (range as u128)) as u32
             }
@@ -155,7 +156,8 @@ impl NetworkCongestionMonitor {
             v if v == 0 => 0,
             v if v >= NetworkCongestionConstants::MAX_TXN_CAPACITY_TPS => 100,
             v => {
-                ((v as u128 * 100) / (NetworkCongestionConstants::MAX_TXN_CAPACITY_TPS as u128)) as u32
+                ((v as u128 * 100) / (NetworkCongestionConstants::MAX_TXN_CAPACITY_TPS as u128))
+                    as u32
             }
         }
     }
@@ -166,7 +168,9 @@ impl NetworkCongestionMonitor {
             p if p == 0 => 0,
             p if p >= NetworkCongestionConstants::CRITICAL_PENDING_TXN_THRESHOLD => 100,
             p => {
-                ((p as u128 * 100) / (NetworkCongestionConstants::CRITICAL_PENDING_TXN_THRESHOLD as u128)) as u32
+                ((p as u128 * 100)
+                    / (NetworkCongestionConstants::CRITICAL_PENDING_TXN_THRESHOLD as u128))
+                    as u32
             }
         }
     }
@@ -183,34 +187,37 @@ impl NetworkCongestionMonitor {
     }
 
     /// Determine congestion trend based on current and previous metrics
-    pub fn calculate_trend(current_metrics: &NetworkMetrics, previous_metrics: &NetworkMetrics) -> CongestionTrend {
+    pub fn calculate_trend(
+        current_metrics: &NetworkMetrics,
+        previous_metrics: &NetworkMetrics,
+    ) -> CongestionTrend {
         let current_level = Self::get_current_congestion_level(current_metrics);
         let previous_level = Self::get_current_congestion_level(previous_metrics);
 
         match (current_level, previous_level) {
             // Map increasing trend
-            (CongestionLevel::Critical, CongestionLevel::High) |
-            (CongestionLevel::Critical, CongestionLevel::Moderate) |
-            (CongestionLevel::Critical, CongestionLevel::Low) |
-            (CongestionLevel::Critical, CongestionLevel::VeryLow) |
-            (CongestionLevel::High, CongestionLevel::Moderate) |
-            (CongestionLevel::High, CongestionLevel::Low) |
-            (CongestionLevel::High, CongestionLevel::VeryLow) |
-            (CongestionLevel::Moderate, CongestionLevel::Low) |
-            (CongestionLevel::Moderate, CongestionLevel::VeryLow) |
-            (CongestionLevel::Low, CongestionLevel::VeryLow) => CongestionTrend::Increasing,
+            (CongestionLevel::Critical, CongestionLevel::High)
+            | (CongestionLevel::Critical, CongestionLevel::Moderate)
+            | (CongestionLevel::Critical, CongestionLevel::Low)
+            | (CongestionLevel::Critical, CongestionLevel::VeryLow)
+            | (CongestionLevel::High, CongestionLevel::Moderate)
+            | (CongestionLevel::High, CongestionLevel::Low)
+            | (CongestionLevel::High, CongestionLevel::VeryLow)
+            | (CongestionLevel::Moderate, CongestionLevel::Low)
+            | (CongestionLevel::Moderate, CongestionLevel::VeryLow)
+            | (CongestionLevel::Low, CongestionLevel::VeryLow) => CongestionTrend::Increasing,
 
             // Map stable trend (same level or marginal changes)
             (a, b) if a == b => CongestionTrend::Stable,
 
             // Map decreasing trend
-            (CongestionLevel::Low, CongestionLevel::High) |
-            (CongestionLevel::Low, CongestionLevel::Critical) |
-            (CongestionLevel::VeryLow, _) |
-            (CongestionLevel::Low, CongestionLevel::Moderate) |
-            (CongestionLevel::Moderate, CongestionLevel::High) |
-            (CongestionLevel::Moderate, CongestionLevel::Critical) |
-            (CongestionLevel::High, CongestionLevel::Critical) => CongestionTrend::Decreasing,
+            (CongestionLevel::Low, CongestionLevel::High)
+            | (CongestionLevel::Low, CongestionLevel::Critical)
+            | (CongestionLevel::VeryLow, _)
+            | (CongestionLevel::Low, CongestionLevel::Moderate)
+            | (CongestionLevel::Moderate, CongestionLevel::High)
+            | (CongestionLevel::Moderate, CongestionLevel::Critical)
+            | (CongestionLevel::High, CongestionLevel::Critical) => CongestionTrend::Decreasing,
         }
     }
 
@@ -243,10 +250,10 @@ mod tests {
     fn test_gas_price_factor_calculation() {
         // Min price should be 0
         assert_eq!(NetworkCongestionMonitor::calculate_gas_factor(100), 0);
-        
+
         // Critical price should be 100
         assert_eq!(NetworkCongestionMonitor::calculate_gas_factor(5000), 100);
-        
+
         // Mid-point should be around 50
         let mid = NetworkCongestionMonitor::calculate_gas_factor(2550);
         assert!(mid > 40 && mid < 60);
@@ -262,17 +269,35 @@ mod tests {
     #[test]
     fn test_pending_factor_calculation() {
         assert_eq!(NetworkCongestionMonitor::calculate_pending_factor(0), 0);
-        assert_eq!(NetworkCongestionMonitor::calculate_pending_factor(10000), 100);
+        assert_eq!(
+            NetworkCongestionMonitor::calculate_pending_factor(10000),
+            100
+        );
         assert_eq!(NetworkCongestionMonitor::calculate_pending_factor(5000), 50);
     }
 
     #[test]
     fn test_score_to_congestion_level() {
-        assert_eq!(NetworkCongestionMonitor::score_to_congestion_level(10), CongestionLevel::VeryLow);
-        assert_eq!(NetworkCongestionMonitor::score_to_congestion_level(30), CongestionLevel::Low);
-        assert_eq!(NetworkCongestionMonitor::score_to_congestion_level(50), CongestionLevel::Moderate);
-        assert_eq!(NetworkCongestionMonitor::score_to_congestion_level(70), CongestionLevel::High);
-        assert_eq!(NetworkCongestionMonitor::score_to_congestion_level(90), CongestionLevel::Critical);
+        assert_eq!(
+            NetworkCongestionMonitor::score_to_congestion_level(10),
+            CongestionLevel::VeryLow
+        );
+        assert_eq!(
+            NetworkCongestionMonitor::score_to_congestion_level(30),
+            CongestionLevel::Low
+        );
+        assert_eq!(
+            NetworkCongestionMonitor::score_to_congestion_level(50),
+            CongestionLevel::Moderate
+        );
+        assert_eq!(
+            NetworkCongestionMonitor::score_to_congestion_level(70),
+            CongestionLevel::High
+        );
+        assert_eq!(
+            NetworkCongestionMonitor::score_to_congestion_level(90),
+            CongestionLevel::Critical
+        );
     }
 
     #[test]
@@ -286,7 +311,10 @@ mod tests {
             timestamp: 1000,
             avg_confirmation_time_ms: 2000,
         };
-        assert_eq!(NetworkCongestionMonitor::get_current_congestion_level(&metrics), CongestionLevel::VeryLow);
+        assert_eq!(
+            NetworkCongestionMonitor::get_current_congestion_level(&metrics),
+            CongestionLevel::VeryLow
+        );
     }
 
     #[test]
@@ -300,7 +328,10 @@ mod tests {
             timestamp: 1000,
             avg_confirmation_time_ms: 10000,
         };
-        assert_eq!(NetworkCongestionMonitor::get_current_congestion_level(&metrics), CongestionLevel::Critical);
+        assert_eq!(
+            NetworkCongestionMonitor::get_current_congestion_level(&metrics),
+            CongestionLevel::Critical
+        );
     }
 
     #[test]

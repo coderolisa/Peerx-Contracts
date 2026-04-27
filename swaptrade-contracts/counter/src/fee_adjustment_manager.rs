@@ -1,8 +1,10 @@
-use soroban_sdk::{contracttype, Env, Address, Symbol, symbol_short};
-use crate::network_congestion::{NetworkMetrics, NetworkCongestionMonitor, CongestionLevel};
-use crate::dynamic_fee_adjustment::{DynamicFeeAdjustment, FeeAdjustmentConfig, FeeAdjustmentResult};
-use crate::fee_history::{FeeHistoryManager, AdjustmentReason};
+use crate::dynamic_fee_adjustment::{
+    DynamicFeeAdjustment, FeeAdjustmentConfig, FeeAdjustmentResult,
+};
 use crate::emergency_override::{EmergencyOverrideManager, OverrideReason};
+use crate::fee_history::{AdjustmentReason, FeeHistoryManager};
+use crate::network_congestion::{CongestionLevel, NetworkCongestionMonitor, NetworkMetrics};
+use soroban_sdk::{contracttype, symbol_short, Address, Env, Symbol};
 
 /// Main contract interface for trading fee adjustment
 #[derive(Clone, Debug)]
@@ -10,22 +12,22 @@ use crate::emergency_override::{EmergencyOverrideManager, OverrideReason};
 pub struct FeeAdjustmentInfo {
     /// Current trading fee in basis points
     pub current_fee_bps: u32,
-    
+
     /// Previous trading fee
     pub previous_fee_bps: u32,
-    
+
     /// Current congestion level
     pub congestion_level: CongestionLevel,
-    
+
     /// Fee adjustment configuration
     pub config: FeeAdjustmentConfig,
-    
+
     /// Whether emergency override is active
     pub emergency_override_active: bool,
-    
+
     /// Current network metrics
     pub network_metrics: NetworkMetrics,
-    
+
     /// Last update timestamp
     pub last_update: u64,
 }
@@ -36,16 +38,16 @@ pub struct FeeAdjustmentManager;
 impl FeeAdjustmentManager {
     /// Storage key for current trading fee
     const CURRENT_FEE_KEY: Symbol = symbol_short!("curfee");
-    
+
     /// Storage key for previous trading fee
     const PREVIOUS_FEE_KEY: Symbol = symbol_short!("prvfee");
-    
+
     /// Storage key for fee adjustment config
     const FEE_CONFIG_KEY: Symbol = symbol_short!("feecfg");
-    
+
     /// Storage key for current network metrics
     const NETWORK_METRICS_KEY: Symbol = symbol_short!("netmet");
-    
+
     /// Storage key for previous network metrics (for trend calculation)
     const PREVIOUS_METRICS_KEY: Symbol = symbol_short!("prvmet");
 
@@ -60,7 +62,7 @@ impl FeeAdjustmentManager {
         env.storage()
             .persistent()
             .set(&Self::CURRENT_FEE_KEY, &config.base_fee_bps);
-        
+
         env.storage()
             .persistent()
             .set(&Self::PREVIOUS_FEE_KEY, &config.base_fee_bps);
@@ -79,7 +81,9 @@ impl FeeAdjustmentManager {
             base_fee_bps: config.base_fee_bps,
             congestion_multiplier: 100,
             trend_adjustment_bps: 0,
-            congestion_level: NetworkCongestionMonitor::get_current_congestion_level(&initial_metrics),
+            congestion_level: NetworkCongestionMonitor::get_current_congestion_level(
+                &initial_metrics,
+            ),
             trend: crate::network_congestion::CongestionTrend::Stable,
             emergency_override_active: false,
             calculated_at: env.ledger().timestamp(),
@@ -110,28 +114,35 @@ impl FeeAdjustmentManager {
             .get::<Symbol, u64>(&symbol_short!("lstupd"))
             .unwrap_or(0);
 
-        if !DynamicFeeAdjustment::can_update_fee(last_update, current_time, config.update_cooldown_seconds) {
+        if !DynamicFeeAdjustment::can_update_fee(
+            last_update,
+            current_time,
+            config.update_cooldown_seconds,
+        ) {
             return Err("Update cooldown not elapsed".to_string());
         }
 
         // Get previous metrics for trend calculation
-        let previous_metrics: Option<NetworkMetrics> = env
-            .storage()
-            .persistent()
-            .get(&Self::PREVIOUS_METRICS_KEY);
+        let previous_metrics: Option<NetworkMetrics> =
+            env.storage().persistent().get(&Self::PREVIOUS_METRICS_KEY);
 
         // Check if emergency override should be automatically triggered
         let emergency_override_active = EmergencyOverrideManager::is_active(env);
-        let (should_auto_trigger, auto_trigger_reason) = 
+        let (should_auto_trigger, auto_trigger_reason) =
             EmergencyOverrideManager::should_auto_trigger(&current_metrics);
 
         let mut new_emergency_active = emergency_override_active;
 
         if should_auto_trigger && !emergency_override_active {
             if let Some(reason) = auto_trigger_reason {
-                let _ = EmergencyOverrideManager::activate_automatic(env, reason, &current_metrics, current_time);
+                let _ = EmergencyOverrideManager::activate_automatic(
+                    env,
+                    reason,
+                    &current_metrics,
+                    current_time,
+                );
                 new_emergency_active = true;
-                
+
                 // Emit event for emergency activation
                 crate::events::emergency_fee_override_activated(
                     env,
@@ -165,7 +176,7 @@ impl FeeAdjustmentManager {
             env.storage()
                 .persistent()
                 .set(&Self::PREVIOUS_FEE_KEY, &previous_fee);
-            
+
             env.storage()
                 .persistent()
                 .set(&Self::CURRENT_FEE_KEY, &result.adjusted_fee_bps);
@@ -203,7 +214,7 @@ impl FeeAdjustmentManager {
         env.storage()
             .persistent()
             .set(&Self::PREVIOUS_METRICS_KEY, &current_metrics);
-        
+
         env.storage()
             .persistent()
             .set(&Self::NETWORK_METRICS_KEY, &current_metrics);
@@ -217,11 +228,7 @@ impl FeeAdjustmentManager {
     }
 
     /// Manually update trading fees (admin only)
-    pub fn update_fees_manual(
-        env: &Env,
-        admin: Address,
-        new_fee_bps: u32,
-    ) -> Result<(), String> {
+    pub fn update_fees_manual(env: &Env, admin: Address, new_fee_bps: u32) -> Result<(), String> {
         // Admin authorization would be checked through require_auth in contract
         let config = Self::get_config(env)?;
         let current_time = env.ledger().timestamp();
@@ -241,7 +248,7 @@ impl FeeAdjustmentManager {
         env.storage()
             .persistent()
             .set(&Self::PREVIOUS_FEE_KEY, &previous_fee);
-        
+
         env.storage()
             .persistent()
             .set(&Self::CURRENT_FEE_KEY, &new_fee_bps);
@@ -329,16 +336,12 @@ impl FeeAdjustmentManager {
 
     /// Get current trading fee
     pub fn get_current_fee(env: &Env) -> Option<u32> {
-        env.storage()
-            .persistent()
-            .get(&Self::CURRENT_FEE_KEY)
+        env.storage().persistent().get(&Self::CURRENT_FEE_KEY)
     }
 
     /// Get previous trading fee
     pub fn get_previous_fee(env: &Env) -> Option<u32> {
-        env.storage()
-            .persistent()
-            .get(&Self::PREVIOUS_FEE_KEY)
+        env.storage().persistent().get(&Self::PREVIOUS_FEE_KEY)
     }
 
     /// Get fee adjustment configuration
@@ -351,9 +354,7 @@ impl FeeAdjustmentManager {
 
     /// Get current network metrics
     pub fn get_network_metrics(env: &Env) -> Option<NetworkMetrics> {
-        env.storage()
-            .persistent()
-            .get(&Self::NETWORK_METRICS_KEY)
+        env.storage().persistent().get(&Self::NETWORK_METRICS_KEY)
     }
 
     /// Get complete fee adjustment info
@@ -399,18 +400,12 @@ impl FeeAdjustmentManager {
     }
 
     /// Deactivate emergency override (admin only)
-    pub fn deactivate_emergency_override(
-        env: &Env,
-        admin: Address,
-    ) -> Result<(), String> {
+    pub fn deactivate_emergency_override(env: &Env, admin: Address) -> Result<(), String> {
         // Admin authorization would be checked through require_auth in contract
         let current_time = env.ledger().timestamp();
         EmergencyOverrideManager::deactivate(env, Some(admin), current_time)?;
 
-        crate::events::emergency_fee_override_deactivated(
-            env,
-            current_time as u64,
-        );
+        crate::events::emergency_fee_override_deactivated(env, current_time as u64);
 
         Ok(())
     }
@@ -426,7 +421,9 @@ impl FeeAdjustmentManager {
     }
 
     /// Get emergency override state
-    pub fn get_emergency_override_state(env: &Env) -> crate::emergency_override::EmergencyOverrideState {
+    pub fn get_emergency_override_state(
+        env: &Env,
+    ) -> crate::emergency_override::EmergencyOverrideState {
         EmergencyOverrideManager::get_state(env)
     }
 }
