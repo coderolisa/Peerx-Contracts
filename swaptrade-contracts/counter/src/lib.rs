@@ -34,6 +34,16 @@ mod batch_opt_simple_test;
 #[cfg(all(test, feature = "experimental"))]
 mod batch_performance_tests;
 mod oracle;
+mod oracle_adapter;
+mod orders;
+#[cfg(test)]
+mod orders_tests;
+#[cfg(test)]
+mod analytics_dashboard_tests;
+#[cfg(test)]
+mod oracle_adapter_tests;
+#[cfg(test)]
+mod multihop_swap_tests;
 mod governance_params;
 mod nonce;
 
@@ -1032,6 +1042,22 @@ impl CounterContract {
         registry.find_best_route(&env, token_in, token_out, amount_in)
     }
 
+    /// Execute a multi-hop swap along a discovered route
+    /// Atomic execution: fails if any hop fails
+    /// Respects slippage tolerance specified by min_amount_out
+    pub fn execute_multi_hop_swap(
+        env: Env,
+        route: Route,
+        amount_in: i128,
+        min_amount_out: i128,
+        trader: Address,
+    ) -> Result<i128, ContractError> {
+        trader.require_auth();
+        require_verified_user(&env, &trader)?;
+        
+        trading::execute_multihop_swap(&env, &route, amount_in, min_amount_out, &trader)
+    }
+
     pub fn get_pool(env: Env, pool_id: u64) -> Option<LiquidityPool> {
         let registry = load_pool_registry(&env);
         registry.get_pool(pool_id)
@@ -1127,6 +1153,69 @@ impl CounterContract {
     /// Get total earned bonuses for a user
     pub fn get_user_earned_bonuses(env: Env, user: Address) -> i128 {
         StakingBonusManager::get_user_earned_bonuses(&env, user)
+    }
+
+    // ────────────────────────────────────────────────────────────────────────
+    // Advanced Order Types (Limit & Stop-Loss)
+    // ────────────────────────────────────────────────────────────────────────
+
+    /// Place a limit order that executes when price reaches limit_price or better
+    pub fn place_limit_order(
+        env: Env,
+        token_in: Symbol,
+        token_out: Symbol,
+        amount_in: i128,
+        limit_price: u128,
+        expires_at: Option<u64>,
+        user: Address,
+    ) -> Result<u64, ContractError> {
+        require_authenticated_verified_user(&env, &user)?;
+        orders::OrderManager::place_limit_order(&env, user, token_in, token_out, amount_in, limit_price, expires_at)
+    }
+
+    /// Place a stop-loss order that executes when price reaches trigger_price
+    pub fn place_stop_loss(
+        env: Env,
+        token_in: Symbol,
+        token_out: Symbol,
+        amount_in: i128,
+        trigger_price: u128,
+        expires_at: Option<u64>,
+        user: Address,
+    ) -> Result<u64, ContractError> {
+        require_authenticated_verified_user(&env, &user)?;
+        orders::OrderManager::place_stop_loss(&env, user, token_in, token_out, amount_in, trigger_price, expires_at)
+    }
+
+    /// Cancel an existing order
+    pub fn cancel_order(env: Env, order_id: u64, user: Address) -> Result<(), ContractError> {
+        require_authenticated_verified_user(&env, &user)?;
+        orders::OrderManager::cancel_order(&env, order_id, user)
+    }
+
+    /// Get order details
+    pub fn get_order(env: Env, order_id: u64) -> Result<orders::Order, ContractError> {
+        orders::OrderManager::get_order(&env, order_id)
+    }
+
+    /// Get all active orders for a user
+    pub fn get_user_orders(env: Env, user: Address) -> Vec<orders::Order> {
+        orders::OrderManager::get_user_orders(&env, user)
+    }
+
+    // ────────────────────────────────────────────────────────────────────────
+    // Portfolio Analytics Dashboard
+    // ────────────────────────────────────────────────────────────────────────
+
+    /// Get comprehensive analytics summary for a user
+    /// Includes PnL, win rate, Sharpe ratio, and other metrics
+    pub fn get_analytics_summary(env: Env, user: Address) -> portfolio::AnalyticsSummary {
+        let portfolio: Portfolio = env
+            .storage()
+            .instance()
+            .get(&())
+            .unwrap_or_else(|| Portfolio::new(&env));
+        portfolio.get_analytics_summary(&env, user)
     }
 
     /// Get total claimed bonuses for a user

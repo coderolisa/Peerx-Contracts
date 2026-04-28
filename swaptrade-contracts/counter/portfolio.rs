@@ -64,6 +64,47 @@ pub struct Portfolio {
     // Time-series Analytics Data
     daily_portfolio_values: Map<(Address, u64), i128>, // (user, date) -> portfolio value
     last_update_timestamp: Map<Address, u64>,          // last time portfolio was recorded
+    
+    // Advanced Analytics Data
+    trade_history: Map<Address, Vec<TradeRecord>>,     // Detailed trade history per user
+    realized_pnl: Map<Address, i128>,                  // Realized PnL per user
+    unrealized_pnl: Map<Address, i128>,                // Unrealized PnL per user
+    winning_trades: Map<Address, u32>,                 // Count of winning trades
+    losing_trades: Map<Address, u32>,                  // Count of losing trades
+    total_trade_pnl: Map<Address, i128>,               // Sum of all trade PnLs
+}
+
+/// Detailed trade record for analytics
+#[contracttype]
+#[derive(Clone, Debug, PartialEq)]
+pub struct TradeRecord {
+    pub timestamp: u64,
+    pub token_in: Symbol,
+    pub token_out: Symbol,
+    pub amount_in: i128,
+    pub amount_out: i128,
+    pub pnl: i128,              // PnL for this specific trade
+    pub is_winner: bool,         // Whether this trade was profitable
+}
+
+/// Analytics summary for a user
+#[contracttype]
+#[derive(Clone, Debug, PartialEq)]
+pub struct AnalyticsSummary {
+    pub total_trades: u32,
+    pub winning_trades: u32,
+    pub losing_trades: u32,
+    pub win_rate: u128,                  // Fixed-point: 7 decimals (e.g., 0.65 = 65%)
+    pub realized_pnl: i128,
+    pub unrealized_pnl: i128,
+    pub total_pnl: i128,
+    pub avg_trade_size: i128,
+    pub avg_winning_trade: i128,
+    pub avg_losing_trade: i128,
+    pub sharpe_ratio: i128,              // Fixed-point: 7 decimals
+    pub max_drawdown: u128,              // Fixed-point: 7 decimals
+    pub best_trade: i128,
+    pub worst_trade: i128,
 }
 
 #[derive(Clone, Debug, PartialEq)] // Added derives for testing
@@ -128,6 +169,12 @@ impl Portfolio {
             migration_time: None,
             daily_portfolio_values: Map::new(env),
             last_update_timestamp: Map::new(env),
+            trade_history: Map::new(env),
+            realized_pnl: Map::new(env),
+            unrealized_pnl: Map::new(env),
+            winning_trades: Map::new(env),
+            losing_trades: Map::new(env),
+            total_trade_pnl: Map::new(env),
         }
     }
 
@@ -360,6 +407,275 @@ impl Portfolio {
         let date_key = last_timestamp / 86400;
         let key = (user, date_key);
         self.daily_portfolio_values.get(key)
+    }
+
+    // ===== ADVANCED ANALYTICS =====
+
+    /// Record a trade with PnL tracking
+    pub fn record_trade_with_pnl(
+        &mut self,
+        env: &Env,
+        user: Address,
+        token_in: Symbol,
+        token_out: Symbol,
+        amount_in: i128,
+        amount_out: i128,
+        timestamp: u64,
+    ) {
+        // Calculate PnL for this trade
+        let pnl = amount_out.saturating_sub(amount_in);
+        let is_winner = pnl > 0;
+
+        // Create trade record
+        let trade = TradeRecord {
+            timestamp,
+            token_in,
+            token_out,
+            amount_in,
+            amount_out,
+            pnl,
+            is_winner,
+        };
+
+        // Add to trade history
+        let mut history: Vec<TradeRecord> = self
+            .trade_history
+            .get(user.clone())
+            .unwrap_or_else(|| Vec::new(env));
+        history.push_back(trade);
+        self.trade_history.set(user.clone(), history);
+
+        // Update PnL tracking
+        let current_realized = self.realized_pnl.get(user.clone()).unwrap_or(0);
+        self.realized_pnl
+            .set(user.clone(), current_realized.saturating_add(pnl));
+
+        let current_total = self.total_trade_pnl.get(user.clone()).unwrap_or(0);
+        self.total_trade_pnl
+            .set(user.clone(), current_total.saturating_add(pnl));
+
+        // Update win/loss counters
+        if is_winner {
+            let wins = self.winning_trades.get(user.clone()).unwrap_or(0);
+            self.winning_trades.set(user.clone(), wins.saturating_add(1));
+        } else if pnl < 0 {
+            let losses = self.losing_trades.get(user.clone()).unwrap_or(0);
+            self.losing_trades.set(user.clone(), losses.saturating_add(1));
+        }
+    }
+
+    /// Get comprehensive analytics summary for a user
+    pub fn get_analytics_summary(&self, env: &Env, user: Address) -> AnalyticsSummary {
+        let total_trades = self.trades.get(user.clone()).unwrap_or(0);
+        let winning_trades = self.winning_trades.get(user.clone()).unwrap_or(0);
+        let losing_trades = self.losing_trades.get(user.clone()).unwrap_or(0);
+        let realized_pnl = self.realized_pnl.get(user.clone()).unwrap_or(0);
+        let unrealized_pnl = self.unrealized_pnl.get(user.clone()).unwrap_or(0);
+        let total_pnl = realized_pnl.saturating_add(unrealized_pnl);
+
+        // Calculate win rate
+        let win_rate = if total_trades > 0 {
+            ((winning_trades as u128).saturating_mul(10_000_000)) / (total_trades as u128)
+        } else {
+            0
+        };
+
+        // Calculate average trade metrics
+        let history: Vec<TradeRecord> = self
+            .trade_history
+            .get(user.clone())
+            .unwrap_or_else(|| Vec::new(env));
+
+        let (avg_trade_size, avg_winning_trade, avg_losing_trade, best_trade, worst_trade) =
+            self.calculate_trade_averages(env, &history);
+
+        // Calculate Sharpe ratio (simplified)
+        let sharpe_ratio = self.calculate_sharpe_ratio(env, &history);
+
+        // Calculate max drawdown
+        let max_drawdown = self.calculate_max_drawdown(env, user.clone());
+
+        AnalyticsSummary {
+            total_trades,
+            winning_trades,
+            losing_trades,
+            win_rate,
+            realized_pnl,
+            unrealized_pnl,
+            total_pnl,
+            avg_trade_size,
+            avg_winning_trade,
+            avg_losing_trade,
+            sharpe_ratio,
+            max_drawdown,
+            best_trade,
+            worst_trade,
+        }
+    }
+
+    /// Calculate average trade metrics
+    fn calculate_trade_averages(
+        &self,
+        env: &Env,
+        history: &Vec<TradeRecord>,
+    ) -> (i128, i128, i128, i128, i128) {
+        if history.is_empty() {
+            return (0, 0, 0, 0, 0);
+        }
+
+        let mut total_size: i128 = 0;
+        let mut winning_sum: i128 = 0;
+        let mut losing_sum: i128 = 0;
+        let mut winning_count: i128 = 0;
+        let mut losing_count: i128 = 0;
+        let mut best: i128 = i128::MIN;
+        let mut worst: i128 = i128::MAX;
+
+        for i in 0..history.len() {
+            if let Some(trade) = history.get(i) {
+                total_size = total_size.saturating_add(trade.amount_in);
+
+                if trade.pnl > best {
+                    best = trade.pnl;
+                }
+                if trade.pnl < worst {
+                    worst = trade.pnl;
+                }
+
+                if trade.is_winner {
+                    winning_sum = winning_sum.saturating_add(trade.pnl);
+                    winning_count = winning_count.saturating_add(1);
+                } else if trade.pnl < 0 {
+                    losing_sum = losing_sum.saturating_add(trade.pnl);
+                    losing_count = losing_count.saturating_add(1);
+                }
+            }
+        }
+
+        let count = history.len() as i128;
+        let avg_trade_size = total_size.saturating_div(count);
+        let avg_winning = if winning_count > 0 {
+            winning_sum.saturating_div(winning_count)
+        } else {
+            0
+        };
+        let avg_losing = if losing_count > 0 {
+            losing_sum.saturating_div(losing_count)
+        } else {
+            0
+        };
+
+        (avg_trade_size, avg_winning, avg_losing, best, worst)
+    }
+
+    /// Calculate Sharpe ratio (simplified version)
+    /// Sharpe = (Average Return - Risk-Free Rate) / Standard Deviation
+    /// Using fixed-point arithmetic with 7 decimals
+    fn calculate_sharpe_ratio(&self, env: &Env, history: &Vec<TradeRecord>) -> i128 {
+        if history.len() < 2 {
+            return 0;
+        }
+
+        // Calculate returns for each trade
+        let mut returns: Vec<i128> = Vec::new(env);
+        for i in 0..history.len() {
+            if let Some(trade) = history.get(i) {
+                if trade.amount_in > 0 {
+                    let return_pct = (trade.pnl.saturating_mul(10_000_000)) / trade.amount_in;
+                    returns.push_back(return_pct);
+                }
+            }
+        }
+
+        if returns.is_empty() {
+            return 0;
+        }
+
+        // Calculate average return
+        let mut sum: i128 = 0;
+        for i in 0..returns.len() {
+            sum = sum.saturating_add(returns.get(i).unwrap_or(0));
+        }
+        let avg_return = sum.saturating_div(returns.len() as i128);
+
+        // Calculate standard deviation
+        let mut variance_sum: i128 = 0;
+        for i in 0..returns.len() {
+            let ret = returns.get(i).unwrap_or(0);
+            let diff = ret.saturating_sub(avg_return);
+            variance_sum = variance_sum.saturating_add(diff.saturating_mul(diff));
+        }
+        let variance = variance_sum.saturating_div(returns.len() as i128);
+        let std_dev = self.sqrt_i128(variance);
+
+        // Sharpe ratio (assuming risk-free rate = 0 for simplicity)
+        if std_dev > 0 {
+            (avg_return.saturating_mul(10_000_000)) / std_dev
+        } else {
+            0
+        }
+    }
+
+    /// Calculate maximum drawdown from portfolio values
+    /// Returns drawdown as percentage in fixed-point (7 decimals)
+    fn calculate_max_drawdown(&self, env: &Env, user: Address) -> u128 {
+        let history: Vec<TradeRecord> = self
+            .trade_history
+            .get(user.clone())
+            .unwrap_or_else(|| Vec::new(env));
+
+        if history.is_empty() {
+            return 0;
+        }
+
+        let mut peak: i128 = 0;
+        let mut max_dd: u128 = 0;
+        let mut cumulative_pnl: i128 = 0;
+
+        for i in 0..history.len() {
+            if let Some(trade) = history.get(i) {
+                cumulative_pnl = cumulative_pnl.saturating_add(trade.pnl);
+                let portfolio_value = 10_000_000_000_000_000_000i128.saturating_add(cumulative_pnl); // Starting from 10^19
+
+                if portfolio_value > peak {
+                    peak = portfolio_value;
+                }
+
+                if peak > 0 {
+                    let drawdown = ((peak.saturating_sub(portfolio_value)) as u128)
+                        .saturating_mul(10_000_000)
+                        .saturating_div(peak as u128);
+                    if drawdown > max_dd {
+                        max_dd = drawdown;
+                    }
+                }
+            }
+        }
+
+        max_dd
+    }
+
+    /// Integer square root for i128
+    fn sqrt_i128(&self, n: i128) -> i128 {
+        if n <= 0 {
+            return 0;
+        }
+        if n == 1 {
+            return 1;
+        }
+
+        let mut x = n / 2;
+        let mut prev_x: i128;
+
+        loop {
+            prev_x = x;
+            x = (x + n / x) / 2;
+            if x >= prev_x {
+                break;
+            }
+        }
+
+        prev_x
     }
 
     // ===== BADGE & ACHIEVEMENT SYSTEM =====

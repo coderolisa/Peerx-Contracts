@@ -325,7 +325,7 @@ impl StakingBonusManager {
         let mut total_claimed = 0i128;
 
         for i in 0..stakes.len() {
-            let mut stake = stakes.get(i).ok_or("Stake not found")?;
+            let mut stake = stakes.get(i).unwrap();
 
             // Check if bonus is claimable and hasn't been claimed
             if !stake.bonus_claimed
