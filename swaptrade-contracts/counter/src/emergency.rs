@@ -1,6 +1,7 @@
 // src/emergency.rs
 extern crate alloc;
 use soroban_sdk::{contracttype, Address, Env, Map, Symbol, Vec, symbol_short};
+use crate::errors::SwapTradeError;
 
 #[contracttype]
 pub struct StateSnapshot {
@@ -39,24 +40,30 @@ pub fn is_admin(env: &Env, addr: Address) -> bool {
     }
 }
 
-pub fn pause(env: &Env, admin: Address) -> bool {
-    assert!(is_admin(env, admin), "Not authorized");
+pub fn pause(env: &Env, admin: Address) -> Result<bool, SwapTradeError> {
+    if !is_admin(env, admin) {
+        return Err(SwapTradeError::NotEmergencyAdmin);
+    }
     env.storage().instance().set(&EmergencyKey::Paused, &true);
-    true
+    Ok(true)
 }
 
-pub fn unpause(env: &Env, admin: Address) -> bool {
-    assert!(is_admin(env, admin), "Not authorized");
+pub fn unpause(env: &Env, admin: Address) -> Result<bool, SwapTradeError> {
+    if !is_admin(env, admin) {
+        return Err(SwapTradeError::NotEmergencyAdmin);
+    }
     env.storage().instance().set(&EmergencyKey::Paused, &false);
-    true
+    Ok(true)
 }
 
 pub fn is_paused(env: &Env) -> bool {
     env.storage().instance().get(&EmergencyKey::Paused).unwrap_or(false)
 }
 
-pub fn freeze_user(env: &Env, admin: Address, user: Address) -> bool {
-    assert!(is_admin(env, admin), "Not authorized");
+pub fn freeze_user(env: &Env, admin: Address, user: Address) -> Result<bool, SwapTradeError> {
+    if !is_admin(env, admin) {
+        return Err(SwapTradeError::NotEmergencyAdmin);
+    }
 
     let mut frozen: Vec<Address> =
         env.storage().instance().get(&EmergencyKey::FrozenUsers).unwrap_or(Vec::new(env));
@@ -65,11 +72,13 @@ pub fn freeze_user(env: &Env, admin: Address, user: Address) -> bool {
         frozen.push_back(user.clone());
         env.storage().instance().set(&EmergencyKey::FrozenUsers, &frozen);
     }
-    true
+    Ok(true)
 }
 
-pub fn unfreeze_user(env: &Env, admin: Address, user: Address) -> bool {
-    assert!(is_admin(env, admin), "Not authorized");
+pub fn unfreeze_user(env: &Env, admin: Address, user: Address) -> Result<bool, SwapTradeError> {
+    if !is_admin(env, admin) {
+        return Err(SwapTradeError::NotEmergencyAdmin);
+    }
 
     let mut frozen: Vec<Address> =
         env.storage().instance().get(&EmergencyKey::FrozenUsers).unwrap_or(Vec::new(env));
@@ -84,7 +93,7 @@ pub fn unfreeze_user(env: &Env, admin: Address, user: Address) -> bool {
     }
 
     env.storage().instance().set(&EmergencyKey::FrozenUsers, &new_frozen);
-    true
+    Ok(true)
 }
 
 pub fn is_frozen(env: &Env, user: Address) -> bool {
@@ -94,9 +103,12 @@ pub fn is_frozen(env: &Env, user: Address) -> bool {
 }
 
 // Circuit breaker settings
-pub fn set_threshold_bps(env: &Env, admin: Address, bps: u32) {
-    assert!(is_admin(env, admin), "Not authorized");
+pub fn set_threshold_bps(env: &Env, admin: Address, bps: u32) -> Result<(), SwapTradeError> {
+    if !is_admin(env, admin) {
+        return Err(SwapTradeError::NotEmergencyAdmin);
+    }
     env.storage().instance().set(&EmergencyKey::ThresholdBps, &bps);
+    Ok(())
 }
 
 pub fn get_threshold_bps(env: &Env) -> u32 {
@@ -126,7 +138,6 @@ pub fn circuit_breaker_check(env: &Env, amount: i128, normal_volume: i128) {
     let current = get_block_volume(env, height.into());
     let projected = current.saturating_add(amount);
 
-    // If current > normal * threshold, pause
     if normal_volume > 0 {
         let ratio_bps = (projected * 10000) / normal_volume;
         if ratio_bps > threshold as i128 {
@@ -135,6 +146,18 @@ pub fn circuit_breaker_check(env: &Env, amount: i128, normal_volume: i128) {
     }
 }
 
+/// Returns true if adding `amount` would trip the circuit breaker (without mutating state).
+pub fn would_trip_circuit_breaker(env: &Env, amount: i128, normal_volume: i128) -> bool {
+    let threshold = get_threshold_bps(env);
+    let height = env.ledger().sequence();
+    let current = get_block_volume(env, height.into());
+    let projected = current.saturating_add(amount);
+    if normal_volume > 0 {
+        let ratio_bps = (projected * 10000) / normal_volume;
+        return ratio_bps > threshold as i128;
+    }
+    false
+}
 pub fn snapshot(env: &Env, portfolio: &crate::portfolio::Portfolio) -> StateSnapshot {
     // Snapshot balances
     let mut balances: Vec<((Address, Symbol), i128)> = Vec::new(env);

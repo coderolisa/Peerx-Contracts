@@ -150,7 +150,7 @@ use crate::errors::{ContractError, SwapTradeError};
 use crate::storage::{ADMIN_KEY, PAUSED_KEY};
 
 pub(crate) fn require_verified_user(env: &Env, user: &Address) -> Result<(), ContractError> {
-    kyc::KYCSystem::require_verified(env, user).map_err(|_| ContractError::KYCVerificationRequired)
+    kyc::KYCSystem::require_verified(env, user)
 }
 
 fn require_authenticated_verified_user(env: &Env, user: &Address) -> Result<(), ContractError> {
@@ -340,10 +340,8 @@ impl CounterContract {
     }
 
     /// Swap tokens using simplified AMM (1:1 XLM <-> USDC-SIM)
-    pub fn swap(env: Env, from: Symbol, to: Symbol, amount: i128, user: Address) -> i128 {
-        if require_authenticated_verified_user(&env, &user).is_err() {
-            panic!("KYC_VERIFICATION_REQUIRED");
-        }
+    pub fn swap(env: Env, from: Symbol, to: Symbol, amount: i128, user: Address) -> Result<i128, ContractError> {
+        require_authenticated_verified_user(&env, &user)?;
 
         let mut portfolio: Portfolio = env
             .storage()
@@ -355,9 +353,8 @@ impl CounterContract {
         let user_tier = portfolio.get_user_tier(&env, user.clone());
 
         // Check rate limit before executing swap
-        if let Err(_limit_status) = RateLimiter::check_swap_limit(&env, &user, &user_tier) {
-            panic!("RATELIMIT");
-        }
+        RateLimiter::check_swap_limit(&env, &user, &user_tier)
+            .map_err(|_| ContractError::RateLimitExceeded)?;
 
         let fee_bps = user_tier.effective_fee_bps();
 
@@ -407,7 +404,7 @@ impl CounterContract {
                 .publish((symbol_short!("swap")), (amount, out_amount));
         }
 
-        out_amount
+        Ok(out_amount)
     }
 
     /// Non-panicking swap that counts failed orders and returns 0 on failure
@@ -718,13 +715,12 @@ impl CounterContract {
 
     /// Add liquidity to the pool and mint LP tokens
     /// Returns the number of LP tokens minted
-    pub fn add_liquidity(env: Env, xlm_amount: i128, usdc_amount: i128, user: Address) -> i128 {
-        if require_authenticated_verified_user(&env, &user).is_err() {
-            panic!("KYC_VERIFICATION_REQUIRED");
-        }
+    pub fn add_liquidity(env: Env, xlm_amount: i128, usdc_amount: i128, user: Address) -> Result<i128, ContractError> {
+        require_authenticated_verified_user(&env, &user)?;
 
-        assert!(xlm_amount > 0, "XLM amount must be positive");
-        assert!(usdc_amount > 0, "USDC amount must be positive");
+        if xlm_amount <= 0 || usdc_amount <= 0 {
+            return Err(ContractError::InvalidAmount);
+        }
 
         let mut portfolio: Portfolio = env
             .storage()
@@ -734,9 +730,8 @@ impl CounterContract {
 
         // Check rate limit for LP operations
         let user_tier = portfolio.get_user_tier(&env, user.clone());
-        if let Err(_) = RateLimiter::check_lp_limit(&env, &user, &user_tier) {
-            panic!("RATELIMIT");
-        }
+        RateLimiter::check_lp_limit(&env, &user, &user_tier)
+            .map_err(|_| ContractError::RateLimitExceeded)?;
 
         // Get current pool state
         let current_xlm = portfolio.get_liquidity(Asset::XLM);
@@ -748,21 +743,17 @@ impl CounterContract {
         let user_usdc_balance =
             portfolio.balance_of(&env, Asset::Custom(symbol_short!("USDCSIM")), user.clone());
 
-        assert!(user_xlm_balance >= xlm_amount, "Insufficient XLM balance");
-        assert!(
-            user_usdc_balance >= usdc_amount,
-            "Insufficient USDC balance"
-        );
+        if user_xlm_balance < xlm_amount || user_usdc_balance < usdc_amount {
+            return Err(ContractError::InsufficientBalance);
+        }
 
         // Calculate LP tokens to mint using constant product AMM formula
         // If pool is empty, LP tokens = sqrt(xlm * usdc)
         // Otherwise, LP tokens = (deposit / pool_size) * total_lp_tokens
         let lp_tokens_minted = if total_lp_tokens == 0 {
-            // First liquidity provider: LP tokens = sqrt(xlm * usdc)
-            // Use integer square root (Babylonian method)
             let product = (xlm_amount as u128).saturating_mul(usdc_amount as u128);
             if product == 0 {
-                panic!("Product must be positive");
+                return Err(ContractError::InvalidAmount);
             }
             // Integer square root using Babylonian method
             let mut guess = product;
@@ -800,7 +791,9 @@ impl CounterContract {
             core::cmp::min(xlm_share as i128, usdc_share as i128)
         };
 
-        assert!(lp_tokens_minted > 0, "LP tokens minted must be positive");
+        if lp_tokens_minted <= 0 {
+            return Err(ContractError::InvalidAmount);
+        }
 
         // Debit assets from user (transfer to pool)
         portfolio.debit(&env, Asset::XLM, user.clone(), xlm_amount);
@@ -848,17 +841,17 @@ impl CounterContract {
         // Flush batched badge events
         crate::events::Events::flush_badge_events(&env);
 
-        lp_tokens_minted
+        Ok(lp_tokens_minted)
     }
 
     /// Remove liquidity from the pool by burning LP tokens
     /// Returns (xlm_amount, usdc_amount) returned to user
-    pub fn remove_liquidity(env: Env, lp_tokens: i128, user: Address) -> (i128, i128) {
-        if require_authenticated_verified_user(&env, &user).is_err() {
-            panic!("KYC_VERIFICATION_REQUIRED");
-        }
+    pub fn remove_liquidity(env: Env, lp_tokens: i128, user: Address) -> Result<(i128, i128), ContractError> {
+        require_authenticated_verified_user(&env, &user)?;
 
-        assert!(lp_tokens > 0, "LP tokens must be positive");
+        if lp_tokens <= 0 {
+            return Err(ContractError::InvalidAmount);
+        }
 
         let mut portfolio: Portfolio = env
             .storage()
@@ -867,19 +860,22 @@ impl CounterContract {
             .unwrap_or_else(|| Portfolio::new(&env));
 
         // Get user's LP position
-        let position = portfolio.get_lp_position(user.clone());
-        assert!(position.is_some(), "User has no LP position");
-        let mut pos = position.unwrap();
+        let mut pos = portfolio
+            .get_lp_position(user.clone())
+            .ok_or(ContractError::LPPositionNotFound)?;
 
-        // Verify user has enough LP tokens
-        assert!(pos.lp_tokens_minted >= lp_tokens, "Insufficient LP tokens");
+        if pos.lp_tokens_minted < lp_tokens {
+            return Err(ContractError::InsufficientLPTokens);
+        }
 
         // Get current pool state
         let current_xlm = portfolio.get_liquidity(Asset::XLM);
         let current_usdc = portfolio.get_liquidity(Asset::Custom(symbol_short!("USDCSIM")));
         let total_lp_tokens = portfolio.get_total_lp_tokens();
 
-        assert!(total_lp_tokens > 0, "No LP tokens in pool");
+        if total_lp_tokens <= 0 {
+            return Err(ContractError::LPPositionNotFound);
+        }
 
         // Calculate proportional share of pool
         // xlm_amount = (lp_tokens / total_lp_tokens) * current_xlm
@@ -889,21 +885,14 @@ impl CounterContract {
         let usdc_amount = ((lp_tokens as u128).saturating_mul(current_usdc as u128)
             / (total_lp_tokens as u128)) as i128;
 
-        assert!(
-            xlm_amount > 0 && usdc_amount > 0,
-            "Amounts must be positive"
-        );
+        if xlm_amount <= 0 || usdc_amount <= 0 {
+            return Err(ContractError::InvalidAmount);
+        }
 
-        // Verify we're not removing more than deposited (with rounding tolerance)
-        // Allow small rounding differences
-        let max_xlm = pos.xlm_deposited;
-        let max_usdc = pos.usdc_deposited;
-
-        // Check if removing more than deposited (with 1% tolerance for rounding)
-        if xlm_amount > max_xlm.saturating_mul(101) / 100
-            || usdc_amount > max_usdc.saturating_mul(101) / 100
+        if xlm_amount > pos.xlm_deposited.saturating_mul(101) / 100
+            || usdc_amount > pos.usdc_deposited.saturating_mul(101) / 100
         {
-            panic!("Cannot remove more than deposited");
+            return Err(ContractError::InsufficientBalance);
         }
 
         // Update pool liquidity (subtract)
@@ -941,7 +930,7 @@ impl CounterContract {
         env.storage().instance().set(&(), &portfolio);
         invalidate_query_cache(&env);
 
-        (xlm_amount, usdc_amount)
+        Ok((xlm_amount, usdc_amount))
     }
 
     /// Get LP positions for a user
@@ -1088,46 +1077,30 @@ impl CounterContract {
 
     /// Stake tokens for a specified duration to earn bonuses
     /// Supports: 30, 60, 90, or 365-day stakes
-    pub fn stake(env: Env, user: Address, amount: i128, duration_days: u32) -> u32 {
-        if require_authenticated_verified_user(&env, &user).is_err() {
-            panic!("KYC_VERIFICATION_REQUIRED");
-        }
-
+    pub fn stake(env: Env, user: Address, amount: i128, duration_days: u32) -> Result<u32, ContractError> {
+        require_authenticated_verified_user(&env, &user)?;
         StakingBonusManager::stake(&env, user, amount, duration_days)
-            .unwrap_or_else(|e| panic!("Staking failed: {}", e))
     }
 
     /// Claim earned staking bonuses (after 30-day holding period)
     /// Returns total bonuses claimed
-    pub fn claim_staking_bonuses(env: Env, user: Address) -> i128 {
-        if require_authenticated_verified_user(&env, &user).is_err() {
-            panic!("KYC_VERIFICATION_REQUIRED");
-        }
-
+    pub fn claim_staking_bonuses(env: Env, user: Address) -> Result<i128, ContractError> {
+        require_authenticated_verified_user(&env, &user)?;
         StakingBonusManager::claim_bonuses(&env, user)
-            .unwrap_or_else(|e| panic!("Bonus claim failed: {}", e))
     }
 
     /// Claim staked principal after lock period expires
     /// Returns the principal amount
-    pub fn claim_stake(env: Env, user: Address, stake_id: u32) -> i128 {
-        if require_authenticated_verified_user(&env, &user).is_err() {
-            panic!("KYC_VERIFICATION_REQUIRED");
-        }
-
+    pub fn claim_stake(env: Env, user: Address, stake_id: u32) -> Result<i128, ContractError> {
+        require_authenticated_verified_user(&env, &user)?;
         StakingBonusManager::claim_stake(&env, user, stake_id)
-            .unwrap_or_else(|e| panic!("Stake claim failed: {}", e))
     }
 
     /// Unstake early before lock period (incurs 10% penalty)
     /// Returns (principal_after_penalty, penalty_amount)
-    pub fn unstake_early(env: Env, user: Address, stake_id: u32) -> (i128, i128) {
-        if require_authenticated_verified_user(&env, &user).is_err() {
-            panic!("KYC_VERIFICATION_REQUIRED");
-        }
-
+    pub fn unstake_early(env: Env, user: Address, stake_id: u32) -> Result<(i128, i128), ContractError> {
+        require_authenticated_verified_user(&env, &user)?;
         StakingBonusManager::unstake_early(&env, user, stake_id)
-            .unwrap_or_else(|e| panic!("Early unstake failed: {}", e))
     }
 
     /// Get all stake records for a user (transparent view)
@@ -1136,9 +1109,8 @@ impl CounterContract {
     }
 
     /// Get specific stake details
-    pub fn get_stake_details(env: Env, user: Address, stake_id: u32) -> StakeRecord {
+    pub fn get_stake_details(env: Env, user: Address, stake_id: u32) -> Result<StakeRecord, ContractError> {
         StakingBonusManager::get_stake_details(&env, user, stake_id)
-            .unwrap_or_else(|e| panic!("Cannot get stake details: {}", e))
     }
 
     /// Get total staked amount for a user
@@ -1173,9 +1145,8 @@ impl CounterContract {
     }
 
     /// Execute periodic bonus distribution (admin only typically)
-    pub fn execute_staking_distribution(env: Env) -> DistributionRecord {
+    pub fn execute_staking_distribution(env: Env) -> Result<DistributionRecord, ContractError> {
         StakingBonusManager::execute_distribution(&env)
-            .unwrap_or_else(|e| panic!("Distribution failed: {}", e))
     }
 
     // ────────────────────────────────────────────────────────────────────────
@@ -1183,15 +1154,13 @@ impl CounterContract {
     // ────────────────────────────────────────────────────────────────────────
 
     /// Add a KYC operator (admin only)
-    pub fn kyc_add_operator(env: Env, admin: Address, operator: Address) {
+    pub fn kyc_add_operator(env: Env, admin: Address, operator: Address) -> Result<(), ContractError> {
         kyc::KYCSystem::add_operator(&env, &admin, operator)
-            .unwrap_or_else(|e| panic!("Failed to add KYC operator: {:?}", e))
     }
 
     /// Remove a KYC operator (admin only)
-    pub fn kyc_remove_operator(env: Env, admin: Address, operator: Address) {
+    pub fn kyc_remove_operator(env: Env, admin: Address, operator: Address) -> Result<(), ContractError> {
         kyc::KYCSystem::remove_operator(&env, &admin, operator)
-            .unwrap_or_else(|e| panic!("Failed to remove KYC operator: {:?}", e))
     }
 
     /// Check if address is a KYC operator
@@ -1200,15 +1169,13 @@ impl CounterContract {
     }
 
     /// Submit KYC for review (user-initiated)
-    pub fn kyc_submit(env: Env, user: Address) {
+    pub fn kyc_submit(env: Env, user: Address) -> Result<(), ContractError> {
         kyc::KYCSystem::submit_kyc(&env, &user)
-            .unwrap_or_else(|e| panic!("Failed to submit KYC: {:?}", e))
     }
 
     /// Resubmit KYC with additional information (user-initiated)
-    pub fn kyc_resubmit(env: Env, user: Address) {
+    pub fn kyc_resubmit(env: Env, user: Address) -> Result<(), ContractError> {
         kyc::KYCSystem::resubmit_kyc(&env, &user)
-            .unwrap_or_else(|e| panic!("Failed to resubmit KYC: {:?}", e))
     }
 
     /// Update KYC status (operator only)
@@ -1218,9 +1185,8 @@ impl CounterContract {
         user: Address,
         new_status: KYCStatus,
         reason: Option<Symbol>,
-    ) {
+    ) -> Result<(), ContractError> {
         kyc::KYCSystem::update_status(&env, &operator, &user, new_status, reason)
-            .unwrap_or_else(|e| panic!("Failed to update KYC status: {:?}", e))
     }
 
     /// Get KYC record for a user
@@ -1234,9 +1200,8 @@ impl CounterContract {
     }
 
     /// Set timelock duration for governance overrides (admin only)
-    pub fn kyc_set_timelock_duration(env: Env, admin: Address, duration: u64) {
+    pub fn kyc_set_timelock_duration(env: Env, admin: Address, duration: u64) -> Result<(), ContractError> {
         kyc::KYCSystem::set_timelock_duration(&env, &admin, duration)
-            .unwrap_or_else(|e| panic!("Failed to set timelock duration: {:?}", e))
     }
 
     /// Get timelock duration
@@ -1251,15 +1216,13 @@ impl CounterContract {
         user: Address,
         new_status: KYCStatus,
         reason: Symbol,
-    ) -> u64 {
+    ) -> Result<u64, ContractError> {
         kyc::KYCSystem::propose_override(&env, &admin, user, new_status, reason)
-            .unwrap_or_else(|e| panic!("Failed to propose override: {:?}", e))
     }
 
     /// Execute governance override after timelock (admin only)
-    pub fn kyc_execute_override(env: Env, admin: Address, override_id: u64) {
+    pub fn kyc_execute_override(env: Env, admin: Address, override_id: u64) -> Result<(), ContractError> {
         kyc::KYCSystem::execute_override(&env, &admin, override_id)
-            .unwrap_or_else(|e| panic!("Failed to execute override: {:?}", e))
     }
 
     /// Get governance override details

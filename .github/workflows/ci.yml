@@ -94,6 +94,9 @@ jobs:
       - name: Run library test suite
         run: cargo test --workspace --lib --verbose
 
+      - name: Validate error catalog consistency
+        run: cargo test --manifest-path swaptrade-contracts/counter/Cargo.toml error_code_tests -- --nocapture
+
       - name: Run formal verification integration suite
         run: cargo test --manifest-path swaptrade-contracts/counter/Cargo.toml --test formal_verification_tests formal_verification -- --nocapture --test-threads=1
 
