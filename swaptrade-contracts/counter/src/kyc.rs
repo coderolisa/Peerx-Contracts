@@ -146,32 +146,8 @@ pub const DEFAULT_PENDING_EXPIRY_DURATION: u64 = 30 * 24 * 60 * 60;
 /// Minimum pending KYC expiry duration (7 days)
 pub const MIN_PENDING_EXPIRY_DURATION: u64 = 7 * 24 * 60 * 60;
 
-/// KYC system errors
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub enum KYCError {
-    /// User is not a KYC operator
-    NotKYCOperator = 1000,
-    /// Invalid state transition attempted
-    InvalidStateTransition = 1001,
-    /// Cannot modify terminal state without governance
-    TerminalStateImmutable = 1002,
-    /// User not verified
-    NotVerified = 1003,
-    /// Self-verification not allowed
-    SelfVerificationNotAllowed = 1004,
-    /// Governance override not found
-    OverrideNotFound = 1005,
-    /// Timelock period not elapsed
-    TimelockNotElapsed = 1006,
-    /// Override already executed
-    OverrideAlreadyExecuted = 1007,
-    /// Invalid timelock duration
-    InvalidTimelockDuration = 1008,
-    /// KYC request has expired
-    RequestExpired = 1009,
-    /// Invalid expiry duration
-    InvalidExpiryDuration = 1010,
-}
+/// KYC error type alias — all KYC errors are variants of the unified SwapTradeError.
+pub type KYCError = crate::errors::SwapTradeError;
 
 /// KYC system implementation
 pub struct KYCSystem;
@@ -262,6 +238,7 @@ impl KYCSystem {
         }
     }
 
+
     // ===== KYC RECORD MANAGEMENT =====
 
     /// Get KYC record for a user
@@ -290,7 +267,7 @@ impl KYCSystem {
         if Self::is_verified(env, user) {
             Ok(())
         } else {
-            Err(KYCError::NotVerified)
+            Err(KYCError::KYCVerificationRequired)
         }
     }
 
@@ -317,7 +294,7 @@ impl KYCSystem {
 
         // Check if current state is terminal
         if record.is_finalized() {
-            return Err(KYCError::TerminalStateImmutable);
+            return Err(KYCError::KYCTerminalStateImmutable);
         }
 
         // Check if pending request has expired
@@ -328,12 +305,12 @@ impl KYCSystem {
                 (symbol_short!("kyc"), symbol_short!("expired")),
                 user.clone(),
             );
-            return Err(KYCError::RequestExpired);
+            return Err(KYCError::KYCRequestExpired);
         }
 
         // Validate state transition
         if !record.status.can_transition_to(&new_status) {
-            return Err(KYCError::InvalidStateTransition);
+            return Err(KYCError::InvalidKYCStateTransition);
         }
 
         // Update record
@@ -373,7 +350,7 @@ impl KYCSystem {
 
         // Can only submit if Unverified
         if record.status != KYCStatus::Unverified {
-            return Err(KYCError::InvalidStateTransition);
+            return Err(KYCError::InvalidKYCStateTransition);
         }
 
         let timestamp = env.ledger().timestamp();
@@ -404,7 +381,7 @@ impl KYCSystem {
 
         // Can only resubmit if AdditionalInfoRequired
         if record.status != KYCStatus::AdditionalInfoRequired {
-            return Err(KYCError::InvalidStateTransition);
+            return Err(KYCError::InvalidKYCStateTransition);
         }
 
         let mut new_record = record;
@@ -437,6 +414,7 @@ impl KYCSystem {
             return Err(KYCError::InvalidTimelockDuration);
         }
 
+
         env.storage()
             .persistent()
             .set(&KYCStorageKey::TimelockDuration, &duration);
@@ -464,6 +442,7 @@ impl KYCSystem {
         if duration < MIN_PENDING_EXPIRY_DURATION {
             return Err(KYCError::InvalidExpiryDuration);
         }
+
 
         env.storage()
             .persistent()
@@ -494,7 +473,7 @@ impl KYCSystem {
         let record = Self::get_record(env, &user);
 
         if !record.is_finalized() {
-            return Err(KYCError::InvalidStateTransition);
+            return Err(KYCError::InvalidKYCStateTransition);
         }
 
         let timestamp = env.ledger().timestamp();
@@ -542,15 +521,15 @@ impl KYCSystem {
             .storage()
             .persistent()
             .get(&KYCStorageKey::Override(override_id))
-            .ok_or(KYCError::OverrideNotFound)?;
+            .ok_or(KYCError::KYCOverrideNotFound)?;
 
         if override_request.executed {
-            return Err(KYCError::OverrideAlreadyExecuted);
+            return Err(KYCError::KYCOverrideAlreadyExecuted);
         }
 
         let timestamp = env.ledger().timestamp();
         if timestamp < override_request.executable_at {
-            return Err(KYCError::TimelockNotElapsed);
+            return Err(KYCError::KYCTimelockNotElapsed);
         }
 
         let mut record = Self::get_record(env, &override_request.user);

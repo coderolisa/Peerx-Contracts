@@ -12,6 +12,7 @@
 /// - 90 days:  20% bonus
 /// - 365 days: 50% bonus
 use soroban_sdk::{contracttype, symbol_short, Address, Env, Vec};
+use crate::errors::SwapTradeError;
 
 // ────────────────────────────────────────────────────────────────────────────
 // Constants
@@ -141,31 +142,29 @@ impl StakingBonusManager {
         user: Address,
         amount: i128,
         duration_days: u32,
-    ) -> Result<u32, String> {
+    ) -> Result<u32, SwapTradeError> {
         if amount <= 0 {
-            return Err("Amount must be positive".into());
+            return Err(SwapTradeError::InvalidAmount);
         }
 
-        // Validate duration
         let duration_secs = match duration_days {
             30 => TIER_30_DAYS_SECS,
             60 => TIER_60_DAYS_SECS,
             90 => TIER_90_DAYS_SECS,
             365 => TIER_365_DAYS_SECS,
-            _ => return Err("Invalid duration: use 30, 60, 90, or 365 days".into()),
+            _ => return Err(SwapTradeError::InvalidStakeDuration),
         };
 
         let current_time = env.ledger().timestamp();
         let unlock_time = current_time + duration_secs;
         let claimable_time = current_time + BONUS_HOLDING_PERIOD_SECS;
 
-        // Calculate bonus
         let bonus_bps = match duration_days {
             30 => TIER_30_DAYS_BONUS_BPS,
             60 => TIER_60_DAYS_BONUS_BPS,
             90 => TIER_90_DAYS_BONUS_BPS,
             365 => TIER_365_DAYS_BONUS_BPS,
-            _ => return Err("Invalid duration".into()),
+            _ => return Err(SwapTradeError::InvalidStakeDuration),
         };
 
         let bonus_amount = Self::calculate_bonus(amount, bonus_bps);
@@ -239,21 +238,21 @@ impl StakingBonusManager {
     ///
     /// # Returns
     /// Result with (principal_returned, penalty) or error
-    pub fn unstake_early(env: &Env, user: Address, stake_id: u32) -> Result<(i128, i128), String> {
+    pub fn unstake_early(env: &Env, user: Address, stake_id: u32) -> Result<(i128, i128), SwapTradeError> {
         let mut stakes: Vec<StakeRecord> = env
             .storage()
             .persistent()
             .get(&StakingBonusKey::UserStakes(user.clone()))
-            .ok_or("No stakes found for user")?;
+            .ok_or(SwapTradeError::StakeNotFound)?;
 
         if stake_id >= stakes.len() {
-            return Err("Invalid stake ID".into());
+            return Err(SwapTradeError::StakeNotFound);
         }
 
-        let mut stake = stakes.get(stake_id).ok_or("Stake not found")?;
+        let mut stake = stakes.get(stake_id).ok_or(SwapTradeError::StakeNotFound)?;
 
         if !stake.is_active {
-            return Err("Stake is not active".into());
+            return Err(SwapTradeError::StakeNotActive);
         }
 
         // Calculate penalty: 10% of principal
@@ -315,12 +314,12 @@ impl StakingBonusManager {
     ///
     /// # Returns
     /// Result with total bonuses claimed or error
-    pub fn claim_bonuses(env: &Env, user: Address) -> Result<i128, String> {
+    pub fn claim_bonuses(env: &Env, user: Address) -> Result<i128, SwapTradeError> {
         let mut stakes: Vec<StakeRecord> = env
             .storage()
             .persistent()
             .get(&StakingBonusKey::UserStakes(user.clone()))
-            .ok_or("No stakes found for user")?;
+            .ok_or(SwapTradeError::StakeNotFound)?;
 
         let current_time = env.ledger().timestamp();
         let mut total_claimed = 0i128;
@@ -341,7 +340,7 @@ impl StakingBonusManager {
         }
 
         if total_claimed == 0 {
-            return Err("No claimable bonuses available".into());
+            return Err(SwapTradeError::NoClaimableBonuses);
         }
 
         // Update storage
@@ -389,29 +388,27 @@ impl StakingBonusManager {
     ///
     /// # Returns
     /// Result with principal amount or error
-    pub fn claim_stake(env: &Env, user: Address, stake_id: u32) -> Result<i128, String> {
+    pub fn claim_stake(env: &Env, user: Address, stake_id: u32) -> Result<i128, SwapTradeError> {
         let mut stakes: Vec<StakeRecord> = env
             .storage()
             .persistent()
             .get(&StakingBonusKey::UserStakes(user.clone()))
-            .ok_or("No stakes found for user")?;
+            .ok_or(SwapTradeError::StakeNotFound)?;
 
         if stake_id >= stakes.len() {
-            return Err("Invalid stake ID".into());
+            return Err(SwapTradeError::StakeNotFound);
         }
 
-        let mut stake = stakes.get(stake_id).ok_or("Stake not found")?;
+        let mut stake = stakes.get(stake_id).ok_or(SwapTradeError::StakeNotFound)?;
 
         if !stake.is_active {
-            return Err("Stake is not active".into());
+            return Err(SwapTradeError::StakeNotActive);
         }
 
         let current_time = env.ledger().timestamp();
 
-        // Check if unlock time has passed
         if current_time < stake.unlock_at {
-            let remaining = stake.unlock_at - current_time;
-            return Err(format!("Stake locked for {} more seconds", remaining));
+            return Err(SwapTradeError::StakeLocked);
         }
 
         let principal = stake.amount;
@@ -469,10 +466,9 @@ impl StakingBonusManager {
     ///
     /// # Returns
     /// Result with distribution summary or error
-    pub fn execute_distribution(env: &Env) -> Result<DistributionRecord, String> {
+    pub fn execute_distribution(env: &Env) -> Result<DistributionRecord, SwapTradeError> {
         let current_time = env.ledger().timestamp();
 
-        // Check if enough time has passed since last distribution
         let last_distribution: u64 = env
             .storage()
             .persistent()
@@ -480,11 +476,7 @@ impl StakingBonusManager {
             .unwrap_or(0);
 
         if current_time < last_distribution + DISTRIBUTION_PERIOD_SECS {
-            let remaining = (last_distribution + DISTRIBUTION_PERIOD_SECS) - current_time;
-            return Err(format!(
-                "Distribution already executed recently. Try again in {} seconds",
-                remaining
-            ));
+            return Err(SwapTradeError::DistributionTooEarly);
         }
 
         let mut total_distributed = 0i128;
@@ -592,14 +584,14 @@ impl StakingBonusManager {
         env: &Env,
         user: Address,
         stake_id: u32,
-    ) -> Result<StakeRecord, String> {
+    ) -> Result<StakeRecord, SwapTradeError> {
         let stakes = Self::get_user_stakes(env, user);
 
         if stake_id >= stakes.len() {
-            return Err("Invalid stake ID".into());
+            return Err(SwapTradeError::StakeNotFound);
         }
 
-        stakes.get(stake_id).ok_or("Stake not found".into())
+        stakes.get(stake_id).ok_or(SwapTradeError::StakeNotFound)
     }
 
     /// Get global statistics
