@@ -135,8 +135,8 @@ pub use liquidity_pool::{LiquidityPool, PoolRegistry, Route};
 
 // KYC exports for contract interface
 pub use kyc::{
-    GovernanceOverride, KYCError, KYCRecord, KYCStatus, KYCSystem, DEFAULT_TIMELOCK_DURATION,
-    MIN_TIMELOCK_DURATION,
+    GovernanceOverride, KYCError, KYCRecord, KYCStatus, KYCSystem, DEFAULT_PENDING_EXPIRY_DURATION,
+    DEFAULT_TIMELOCK_DURATION, MIN_PENDING_EXPIRY_DURATION, MIN_TIMELOCK_DURATION,
 };
 
 // ZKP exports for contract interface
@@ -1302,6 +1302,16 @@ impl CounterContract {
     /// Get timelock duration
     pub fn kyc_get_timelock_duration(env: Env) -> u64 {
         kyc::KYCSystem::get_timelock_duration(&env)
+    }
+
+    /// Set pending KYC expiry duration (admin only)
+    pub fn kyc_set_pending_expiry_duration(env: Env, admin: Address, duration: u64) -> Result<(), ContractError> {
+        kyc::KYCSystem::set_pending_expiry_duration(&env, &admin, duration)
+    }
+
+    /// Get pending KYC expiry duration
+    pub fn kyc_get_pending_expiry_duration(env: Env) -> u64 {
+        kyc::KYCSystem::get_pending_expiry_duration(&env)
     }
 
     /// Propose governance override for terminal state change (admin only)

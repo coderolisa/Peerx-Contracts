@@ -94,6 +94,9 @@ jobs:
       - name: Run library test suite
         run: cargo test --workspace --lib --verbose
 
+      - name: Validate KYC expiry logic
+        run: cargo test --manifest-path swaptrade-contracts/counter/Cargo.toml --lib kyc_tests -- --nocapture
+
       - name: Validate error catalog consistency
         run: cargo test --manifest-path swaptrade-contracts/counter/Cargo.toml error_code_tests -- --nocapture
 

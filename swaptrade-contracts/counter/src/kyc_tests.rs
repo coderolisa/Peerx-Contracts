@@ -117,7 +117,7 @@ fn test_kyc_pending_request_expires_after_duration() {
     with_contract(&env, &contract_id, || {
         assert_eq!(
             KYCSystem::update_status(&env, &operator, &user, KYCStatus::InReview, None),
-            Err(KYCError::RequestExpired)
+            Err(KYCError::KYCRequestExpired)
         );
     });
 }
@@ -172,7 +172,7 @@ fn test_kyc_expired_request_emits_event() {
     // Attempt to approve - this should emit an expiry event
     with_contract(&env, &contract_id, || {
         let result = KYCSystem::update_status(&env, &operator, &user, KYCStatus::InReview, None);
-        assert_eq!(result, Err(KYCError::RequestExpired));
+        assert_eq!(result, Err(KYCError::KYCRequestExpired));
     });
 }
 
@@ -248,14 +248,14 @@ fn test_invalid_transition_sequences_revert_deterministically() {
     with_contract(&env, &contract_id, || {
         assert_eq!(
             KYCSystem::update_status(&env, &operator, &user, KYCStatus::Verified, None),
-            Err(KYCError::InvalidStateTransition)
+            Err(KYCError::InvalidKYCStateTransition)
         );
     });
     submit_kyc(&env, &contract_id, &user);
     with_contract(&env, &contract_id, || {
         assert_eq!(
             KYCSystem::update_status(&env, &operator, &user, KYCStatus::Verified, None),
-            Err(KYCError::InvalidStateTransition)
+            Err(KYCError::InvalidKYCStateTransition)
         );
     });
     with_contract(&env, &contract_id, || {
@@ -267,13 +267,13 @@ fn test_invalid_transition_sequences_revert_deterministically() {
                 KYCStatus::AdditionalInfoRequired,
                 None,
             ),
-            Err(KYCError::InvalidStateTransition)
+            Err(KYCError::InvalidKYCStateTransition)
         );
     });
     with_contract(&env, &contract_id, || {
         assert_eq!(
             KYCSystem::update_status(&env, &operator, &user, KYCStatus::Rejected, None),
-            Err(KYCError::InvalidStateTransition)
+            Err(KYCError::InvalidKYCStateTransition)
         );
     });
 
@@ -283,13 +283,13 @@ fn test_invalid_transition_sequences_revert_deterministically() {
     with_contract(&env, &contract_id, || {
         assert_eq!(
             KYCSystem::update_status(&env, &operator, &other_user, KYCStatus::Verified, None),
-            Err(KYCError::InvalidStateTransition)
+            Err(KYCError::InvalidKYCStateTransition)
         );
     });
     with_contract(&env, &contract_id, || {
         assert_eq!(
             KYCSystem::update_status(&env, &operator, &other_user, KYCStatus::Rejected, None),
-            Err(KYCError::InvalidStateTransition)
+            Err(KYCError::InvalidKYCStateTransition)
         );
     });
 }
@@ -302,7 +302,7 @@ fn test_terminal_states_are_immutable_without_override() {
     with_contract(&env, &contract_id, || {
         assert_eq!(
             KYCSystem::update_status(&env, &operator, &user, KYCStatus::Rejected, None),
-            Err(KYCError::TerminalStateImmutable)
+            Err(KYCError::KYCTerminalStateImmutable)
         );
     });
 
@@ -318,7 +318,7 @@ fn test_terminal_states_are_immutable_without_override() {
     with_contract(&env, &contract_id, || {
         assert_eq!(
             KYCSystem::update_status(&env, &operator, &other_user, KYCStatus::InReview, None),
-            Err(KYCError::TerminalStateImmutable)
+            Err(KYCError::KYCTerminalStateImmutable)
         );
     });
 
@@ -368,7 +368,7 @@ fn test_governance_override_requires_timelock_and_can_execute_after_delay() {
     with_contract(&env, &contract_id, || {
         assert_eq!(
             KYCSystem::execute_override(&env, &admin, override_id),
-            Err(KYCError::TimelockNotElapsed)
+            Err(KYCError::KYCTimelockNotElapsed)
         );
     });
 
@@ -404,7 +404,7 @@ fn test_seeded_terminal_record_cannot_be_mutated_through_controlled_flow() {
 
         assert_eq!(
             KYCSystem::update_status(&env, &operator, &user, KYCStatus::Pending, None),
-            Err(KYCError::TerminalStateImmutable)
+            Err(KYCError::KYCTerminalStateImmutable)
         );
     });
 }
