@@ -177,31 +177,115 @@ pub fn perform_swap(
 
 /// Execute a multi-hop swap through multiple pools
 /// Returns the final output amount
+/// Implements atomic execution: if any hop fails, entire transaction reverts
+/// Each hop respects slippage tolerance
 pub fn execute_multihop_swap(
     env: &Env,
     route: &crate::liquidity_pool::Route,
     amount_in: i128,
-) -> i128 {
+    min_amount_out: i128,
+    trader: &soroban_sdk::Address,
+) -> Result<i128, crate::errors::ContractError> {
     use crate::storage::POOL_REGISTRY_KEY;
     use crate::liquidity_pool::PoolRegistry;
+    
+    if route.pools.is_empty() {
+        return Err(crate::errors::ContractError::InvalidAmount);
+    }
+    
+    if amount_in <= 0 {
+        return Err(crate::errors::ContractError::InvalidAmount);
+    }
     
     let mut registry: PoolRegistry = env
         .storage()
         .instance()
         .get(&POOL_REGISTRY_KEY)
-        .unwrap_or_else(|| PoolRegistry::new(env));
+        .ok_or(crate::errors::ContractError::LPPositionNotFound)?;
     
     let mut current_amount = amount_in;
+    let mut intermediate_amounts: soroban_sdk::Vec<i128> = soroban_sdk::Vec::new(env);
     
+    // Execute each hop in the route
     for i in 0..route.pools.len() {
-        let pool_id = route.pools.get(i).unwrap();
-        let token_in = route.tokens.get(i).unwrap();
+        let pool_id = route.pools.get(i).ok_or(crate::errors::ContractError::InvalidAmount)?;
+        let token_in = route.tokens.get(i).ok_or(crate::errors::ContractError::InvalidTokenSymbol)?;
         
-        current_amount = registry
-            .swap(env, pool_id, token_in, current_amount, 0)
-            .unwrap();
+        // Calculate minimum output for this hop based on overall slippage tolerance
+        // Distribute slippage tolerance proportionally across hops
+        let remaining_hops = (route.pools.len() - i) as u32;
+        let hop_slippage_bps = 10000 / remaining_hops.max(1); // Conservative allocation
+        let min_hop_out = if i == route.pools.len() - 1 {
+            // Last hop: ensure we meet overall minimum
+            min_amount_out
+        } else {
+            // Intermediate hops: use proportional slippage
+            (current_amount as u128)
+                .saturating_mul((10000 - hop_slippage_bps) as u128)
+                .saturating_div(10000) as i128
+        };
+        
+        // Execute swap for this hop
+        let output = registry
+            .swap(env, pool_id, token_in.clone(), current_amount, min_hop_out)
+            .map_err(|e| {
+                // Emit failure event
+                env.events().publish(
+                    (
+                        soroban_sdk::symbol_short!("mhopfail"),
+                        trader.clone(),
+                        i,
+                    ),
+                    (pool_id, current_amount, e),
+                );
+                e
+            })?;
+        
+        // Track intermediate amount
+        intermediate_amounts.push_back(current_amount);
+        
+        // Emit event for this hop
+        env.events().publish(
+            (
+                soroban_sdk::symbol_short!("hop"),
+                trader.clone(),
+                i,
+            ),
+            (pool_id, token_in.clone(), route.tokens.get(i + 1).unwrap_or(token_in.clone()), current_amount, output),
+        );
+        
+        current_amount = output;
     }
     
+    // Final slippage check: ensure output meets minimum requirement
+    if current_amount < min_amount_out {
+        env.events().publish(
+            (
+                soroban_sdk::symbol_short!("mhslip"),
+                trader.clone(),
+            ),
+            (current_amount, min_amount_out),
+        );
+        return Err(crate::errors::ContractError::SlippageExceeded);
+    }
+    
+    // Save updated registry state
     env.storage().instance().set(&POOL_REGISTRY_KEY, &registry);
-    current_amount
+    
+    // Emit overall route execution event
+    env.events().publish(
+        (
+            soroban_sdk::symbol_short!("multihop"),
+            trader.clone(),
+        ),
+        (
+            route.pools.len(),
+            amount_in,
+            current_amount,
+            route.expected_output,
+            route.total_price_impact_bps,
+        ),
+    );
+    
+    Ok(current_amount)
 }

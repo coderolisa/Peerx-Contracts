@@ -36,6 +36,11 @@ pub enum SwapTradeError {
     StalePrice = 201,
     InvalidPrice = 202,
     PriceNotSet = 203,
+    OracleNotConfigured = 204,
+    OracleNotActive = 205,
+    CircuitBreakerActive = 206,
+    CircuitBreakerTriggered = 207,
+    InvalidConfig = 208,
 
     // ── Rate limiting / slippage ────────────────────────────────────────────
     RateLimitExceeded = 300,
