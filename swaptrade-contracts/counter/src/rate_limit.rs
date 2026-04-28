@@ -392,3 +392,125 @@ mod tests {
         assert_eq!(cooldown_expired, 0u64);
     }
 }
+
+// ── Sensitive-action rate limiter (#157) ──────────────────────────────────────
+
+/// Default limit: 3 sensitive actions per 10-minute window.
+pub const SENSITIVE_ACTION_LIMIT: u32 = 3;
+/// Default window: 600 seconds (10 minutes).
+pub const SENSITIVE_ACTION_WINDOW: u64 = 600;
+
+/// Deterministic rate limiter for security-sensitive operations.
+///
+/// Uses block timestamp for consistency and stores per-user counters in
+/// isolated storage keys so no other state is affected.
+pub struct SensitiveRateLimiter;
+
+impl SensitiveRateLimiter {
+    /// Check and record a sensitive action for `user`.
+    ///
+    /// Returns `Ok(())` when the action is within the limit.
+    /// Returns `Err(RateLimitStatus)` with cooldown info when the limit is exceeded.
+    pub fn check_and_record(
+        env: &Env,
+        user: &Address,
+    ) -> Result<(), crate::errors::SwapTradeError> {
+        let timestamp = env.ledger().timestamp();
+        let window_start = (timestamp / SENSITIVE_ACTION_WINDOW) * SENSITIVE_ACTION_WINDOW;
+        let key = (user.clone(), symbol_short!("sens"), window_start);
+
+        let count: u32 = env.storage().persistent().get(&key).unwrap_or(0);
+        if count >= SENSITIVE_ACTION_LIMIT {
+            return Err(crate::errors::SwapTradeError::RateLimitExceeded);
+        }
+
+        env.storage().persistent().set(&key, &(count + 1));
+        Ok(())
+    }
+
+    /// Return how many sensitive actions the user has used in the current window.
+    pub fn current_usage(env: &Env, user: &Address) -> u32 {
+        let timestamp = env.ledger().timestamp();
+        let window_start = (timestamp / SENSITIVE_ACTION_WINDOW) * SENSITIVE_ACTION_WINDOW;
+        let key = (user.clone(), symbol_short!("sens"), window_start);
+        env.storage().persistent().get(&key).unwrap_or(0)
+    }
+}
+
+#[cfg(test)]
+mod sensitive_tests {
+    use super::*;
+    use crate::set_admin;
+    use soroban_sdk::{
+        testutils::{Address as _, Ledger},
+        Address, Env,
+    };
+
+    fn setup() -> (Env, Address, Address) {
+        let env = Env::default();
+        env.mock_all_auths_allowing_non_root_auth();
+        let contract_id = env.register(crate::CounterContract, ());
+        let user = Address::generate(&env);
+        (env, contract_id, user)
+    }
+
+    #[test]
+    fn test_within_limit_succeeds() {
+        let (env, contract_id, user) = setup();
+        env.as_contract(&contract_id, || {
+            for _ in 0..SENSITIVE_ACTION_LIMIT {
+                SensitiveRateLimiter::check_and_record(&env, &user).unwrap();
+            }
+        });
+    }
+
+    #[test]
+    fn test_exceeding_limit_fails() {
+        let (env, contract_id, user) = setup();
+        env.as_contract(&contract_id, || {
+            for _ in 0..SENSITIVE_ACTION_LIMIT {
+                SensitiveRateLimiter::check_and_record(&env, &user).unwrap();
+            }
+            assert_eq!(
+                SensitiveRateLimiter::check_and_record(&env, &user),
+                Err(crate::errors::SwapTradeError::RateLimitExceeded)
+            );
+        });
+    }
+
+    #[test]
+    fn test_limit_resets_after_window() {
+        let (env, contract_id, user) = setup();
+        env.as_contract(&contract_id, || {
+            for _ in 0..SENSITIVE_ACTION_LIMIT {
+                SensitiveRateLimiter::check_and_record(&env, &user).unwrap();
+            }
+            // Advance past the window.
+            env.ledger().with_mut(|l| {
+                l.timestamp = l.timestamp + SENSITIVE_ACTION_WINDOW + 1;
+            });
+            // Should succeed again in the new window.
+            SensitiveRateLimiter::check_and_record(&env, &user).unwrap();
+        });
+    }
+
+    #[test]
+    fn test_boundary_exact_limit() {
+        let (env, contract_id, user) = setup();
+        env.as_contract(&contract_id, || {
+            // Exactly at the limit is still allowed.
+            for i in 0..SENSITIVE_ACTION_LIMIT {
+                assert!(
+                    SensitiveRateLimiter::check_and_record(&env, &user).is_ok(),
+                    "action {} should succeed",
+                    i
+                );
+            }
+            // One over the limit must fail.
+            assert_eq!(
+                SensitiveRateLimiter::check_and_record(&env, &user),
+                Err(crate::errors::SwapTradeError::RateLimitExceeded)
+            );
+        });
+    }
+}

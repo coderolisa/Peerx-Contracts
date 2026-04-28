@@ -34,6 +34,12 @@ mod batch_opt_simple_test;
 #[cfg(all(test, feature = "experimental"))]
 mod batch_performance_tests;
 mod oracle;
+mod governance_params;
+mod nonce;
+
+pub use governance_params::{GovernanceParams, ParamKey, PendingParamUpdate};
+pub use nonce::NonceGuard;
+pub use rate_limit::SensitiveRateLimiter;
 
 mod portfolio {
     include!("../portfolio.rs");
