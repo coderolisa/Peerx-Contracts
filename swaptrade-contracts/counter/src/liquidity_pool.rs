@@ -1,6 +1,10 @@
 use crate::errors::ContractError;
 use soroban_sdk::{contracttype, Address, Env, Map, Symbol, Vec};
 
+/// Minimum LP tokens that must be minted per add_liquidity call.
+/// Prevents dust/rounding attacks by ensuring each deposit is economically meaningful.
+const MIN_LP_TOKENS: i128 = 1000;
+
 #[derive(Clone, Debug, PartialEq)]
 #[contracttype]
 pub struct LiquidityPool {
@@ -139,7 +143,7 @@ impl PoolRegistry {
             (lp_a.min(lp_b)) as i128
         };
 
-        if lp_tokens <= 0 {
+        if lp_tokens <= 0 || lp_tokens < MIN_LP_TOKENS {
             return Err(ContractError::InvalidAmount);
         }
 

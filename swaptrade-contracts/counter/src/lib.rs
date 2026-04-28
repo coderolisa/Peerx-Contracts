@@ -174,21 +174,23 @@ fn require_authenticated_verified_user(env: &Env, user: &Address) -> Result<(), 
     require_verified_user(env, user)
 }
 
-pub fn pause_trading(env: Env) -> Result<bool, SwapTradeError> {
-    // NOTE: Authentication check (invoker) removed for compatibility with SDK versions
-    // In production ensure proper auth by checking invoker and require_admin.
+pub fn pause_trading(env: Env, caller: Address) -> Result<bool, SwapTradeError> {
+    caller.require_auth();
+    crate::admin::require_admin(&env, &caller)?;
     env.storage().persistent().set(&PAUSED_KEY, &true);
     Ok(true)
 }
 
-pub fn resume_trading(env: Env) -> Result<bool, SwapTradeError> {
-    // NOTE: Authentication check (invoker) removed for compatibility with SDK versions
+pub fn resume_trading(env: Env, caller: Address) -> Result<bool, SwapTradeError> {
+    caller.require_auth();
+    crate::admin::require_admin(&env, &caller)?;
     env.storage().persistent().set(&PAUSED_KEY, &false);
     Ok(true)
 }
 
-pub fn set_admin(env: Env, new_admin: Address) -> Result<(), SwapTradeError> {
-    // NOTE: Authentication check (invoker) removed for compatibility with SDK versions
+pub fn set_admin(env: Env, caller: Address, new_admin: Address) -> Result<(), SwapTradeError> {
+    caller.require_auth();
+    crate::admin::require_admin(&env, &caller)?;
     env.storage().persistent().set(&ADMIN_KEY, &new_admin);
     Ok(())
 }
@@ -673,6 +675,12 @@ impl CounterContract {
 
         let user_tier = portfolio.get_user_tier(&env, user.clone());
         RateLimiter::get_lp_status(&env, &user, &user_tier)
+    }
+
+    /// Remove expired rate limit counters for a user.
+    /// Returns the number of storage entries cleaned up.
+    pub fn cleanup_rate_limits(env: Env, user: Address) -> u32 {
+        RateLimiter::cleanup_rate_limits(&env, &user)
     }
 
     // ===== BATCH OPERATIONS =====

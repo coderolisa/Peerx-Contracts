@@ -105,6 +105,8 @@ pub enum StakingBonusKey {
     TotalStaked,
     /// Total bonuses distributed
     TotalBonusesDistributed,
+    /// Registry of all staker addresses (for distribution iteration)
+    StakerRegistry,
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -190,6 +192,20 @@ impl StakingBonusManager {
             .unwrap_or_else(|| Vec::new(env));
 
         let stake_id = stakes.len() as u32;
+
+        // Register staker if this is their first stake
+        if stake_id == 0 {
+            let mut registry: Vec<Address> = env
+                .storage()
+                .persistent()
+                .get(&StakingBonusKey::StakerRegistry)
+                .unwrap_or_else(|| Vec::new(env));
+            registry.push_back(user.clone());
+            env.storage()
+                .persistent()
+                .set(&StakingBonusKey::StakerRegistry, &registry);
+        }
+
         stakes.push_back(stake.clone());
 
         // Update storage
@@ -481,6 +497,45 @@ impl StakingBonusManager {
 
         let mut total_distributed = 0i128;
         let mut recipient_count = 0u32;
+
+        // Collect all staker addresses that have active stakes
+        // We iterate over known stakers by scanning UserStakes keys.
+        // Since Soroban storage doesn't support key enumeration, we maintain
+        // a staker registry under a dedicated key.
+        let stakers: Vec<Address> = env
+            .storage()
+            .persistent()
+            .get(&StakingBonusKey::StakerRegistry)
+            .unwrap_or_else(|| Vec::new(env));
+
+        for staker in stakers.iter() {
+            let stakes: Vec<StakeRecord> = env
+                .storage()
+                .persistent()
+                .get(&StakingBonusKey::UserStakes(staker.clone()))
+                .unwrap_or_else(|| Vec::new(env));
+
+            let mut user_bonus = 0i128;
+            for stake in stakes.iter() {
+                if stake.is_active && !stake.bonus_claimed {
+                    user_bonus += stake.bonus_amount;
+                }
+            }
+
+            if user_bonus > 0 {
+                let prev_earned: i128 = env
+                    .storage()
+                    .persistent()
+                    .get(&StakingBonusKey::UserEarnedBonuses(staker.clone()))
+                    .unwrap_or(0);
+                env.storage().persistent().set(
+                    &StakingBonusKey::UserEarnedBonuses(staker.clone()),
+                    &(prev_earned + user_bonus),
+                );
+                total_distributed += user_bonus;
+                recipient_count += 1;
+            }
+        }
 
         // Get all distribution records
         let mut distributions: Vec<DistributionRecord> = env
