@@ -57,6 +57,10 @@ pub enum SwapTradeError {
     InvalidTimelockDuration = 508,
     KYCRequestExpired = 509,
     InvalidExpiryDuration = 510,
+    /// KYC input data exceeds the allowed size limit (#160).
+    KYCDataTooLarge = 511,
+    /// Maximum number of KYC operators already registered (#160).
+    KYCOperatorLimitReached = 512,
 
     // ── Staking ─────────────────────────────────────────────────────────────
     InvalidStakeDuration = 600,
