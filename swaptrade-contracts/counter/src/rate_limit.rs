@@ -304,6 +304,43 @@ impl RateLimiter {
             cooldown_ms: window.cooldown_ms(timestamp),
         }
     }
+
+    /// Remove expired rate limit counters for a user.
+    ///
+    /// Cleans up swap and LP counters whose time windows have already passed,
+    /// preventing unbounded storage growth.  Only windows strictly older than
+    /// the current window are removed; the active window is left intact.
+    ///
+    /// Returns the number of storage entries removed.
+    pub fn cleanup_rate_limits(env: &Env, user: &Address) -> u32 {
+        let timestamp = env.ledger().timestamp();
+        let current_hourly = TimeWindow::hourly(timestamp).window_start;
+        let current_daily = TimeWindow::daily(timestamp).window_start;
+
+        let mut removed = 0u32;
+
+        // Attempt to remove the previous hourly window (one window back)
+        if current_hourly >= 3600 {
+            let prev_hourly = current_hourly - 3600;
+            let swap_key = (user.clone(), symbol_short!("swap"), prev_hourly);
+            if env.storage().persistent().has(&swap_key) {
+                env.storage().persistent().remove(&swap_key);
+                removed += 1;
+            }
+        }
+
+        // Attempt to remove the previous daily window (one window back)
+        if current_daily >= 86400 {
+            let prev_daily = current_daily - 86400;
+            let lp_key = (user.clone(), symbol_short!("lp_op"), prev_daily);
+            if env.storage().persistent().has(&lp_key) {
+                env.storage().persistent().remove(&lp_key);
+                removed += 1;
+            }
+        }
+
+        removed
+    }
 }
 
 #[cfg(all(test, feature = "experimental"))]
