@@ -77,6 +77,13 @@ pub enum SwapTradeError {
 
     // ── Emergency / circuit-breaker ─────────────────────────────────────────
     NotEmergencyAdmin = 700,
+
+    // ── Risk Management ─────────────────────────────────────────────────────
+    RiskLimitExceeded = 800,
+    ConcentrationLimitExceeded = 801,
+    PositionLimitExceeded = 802,
+    CircuitBreakerTripped = 803,
+    InvalidRiskConfig = 804,
 }
 
 /// Alias kept for modules that still import `ContractError` by name.
