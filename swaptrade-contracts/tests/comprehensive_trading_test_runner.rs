@@ -30,8 +30,8 @@ fn test_insufficient_balance_scenarios() {
     println!("Testing insufficient balance handling...");
     
     let env = Env::default();
-    let contract_id = env.register_contract_wasm(None, swaptrade_contracts:: WASM);
-    let client = swaptrade_contracts::Client::new(&env, &contract_id);
+    let contract_id = env.register_contract_wasm(None, peerx_contracts:: WASM);
+    let client = peerx_contracts::Client::new(&env, &contract_id);
     
     let user = Address::generate(&env);
     let xlm = Symbol::short("XLM");
@@ -58,8 +58,8 @@ fn test_concurrent_trading_operations() {
     println!("Testing concurrent trading operations...");
     
     let env = Env::default();
-    let contract_id = env.register_contract_wasm(None, swaptrade_contracts::WASM);
-    let client = swaptrade_contracts::Client::new(&env, &contract_id);
+    let contract_id = env.register_contract_wasm(None, peerx_contracts::WASM);
+    let client = peerx_contracts::Client::new(&env, &contract_id);
     
     let users = vec![
         &env,
@@ -97,8 +97,8 @@ fn test_amm_precision_edge_cases() {
     println!("Testing AMM precision edge cases...");
     
     let env = Env::default();
-    let contract_id = env.register_contract_wasm(None, swaptrade_contracts::WASM);
-    let client = swaptrade_contracts::Client::new(&env, &contract_id);
+    let contract_id = env.register_contract_wasm(None, peerx_contracts::WASM);
+    let client = peerx_contracts::Client::new(&env, &contract_id);
     
     let user = Address::generate(&env);
     let xlm = Symbol::short("XLM");
@@ -128,8 +128,8 @@ fn test_invalid_input_handling() {
     println!("Testing invalid input handling...");
     
     let env = Env::default();
-    let contract_id = env.register_contract_wasm(None, swaptrade_contracts::WASM);
-    let client = swaptrade_contracts::Client::new(&env, &contract_id);
+    let contract_id = env.register_contract_wasm(None, peerx_contracts::WASM);
+    let client = peerx_contracts::Client::new(&env, &contract_id);
     
     let user = Address::generate(&env);
     let xlm = Symbol::short("XLM");
@@ -155,8 +155,8 @@ fn test_rate_limiting_integration() {
     println!("Testing rate limiting integration...");
     
     let env = Env::default();
-    let contract_id = env.register_contract_wasm(None, swaptrade_contracts::WASM);
-    let client = swaptrade_contracts::Client::new(&env, &contract_id);
+    let contract_id = env.register_contract_wasm(None, peerx_contracts::WASM);
+    let client = peerx_contracts::Client::new(&env, &contract_id);
     
     let user = Address::generate(&env);
     let xlm = Symbol::short("XLM");
@@ -189,8 +189,8 @@ fn test_portfolio_statistics() {
     println!("Testing portfolio statistics tracking...");
     
     let env = Env::default();
-    let contract_id = env.register_contract_wasm(None, swaptrade_contracts::WASM);
-    let client = swaptrade_contracts::Client::new(&env, &contract_id);
+    let contract_id = env.register_contract_wasm(None, peerx_contracts::WASM);
+    let client = peerx_contracts::Client::new(&env, &contract_id);
     
     let user = Address::generate(&env);
     let xlm = Symbol::short("XLM");
@@ -220,8 +220,8 @@ fn test_badge_system_integration() {
     println!("Testing badge system integration...");
     
     let env = Env::default();
-    let contract_id = env.register_contract_wasm(None, swaptrade_contracts::WASM);
-    let client = swaptrade_contracts::Client::new(&env, &contract_id);
+    let contract_id = env.register_contract_wasm(None, peerx_contracts::WASM);
+    let client = peerx_contracts::Client::new(&env, &contract_id);
     
     let user = Address::generate(&env);
     let xlm = Symbol::short("XLM");
@@ -255,8 +255,8 @@ fn test_transaction_history() {
     println!("Testing transaction history tracking...");
     
     let env = Env::default();
-    let contract_id = env.register_contract_wasm(None, swaptrade_contracts::WASM);
-    let client = swaptrade_contracts::Client::new(&env, &contract_id);
+    let contract_id = env.register_contract_wasm(None, peerx_contracts::WASM);
+    let client = peerx_contracts::Client::new(&env, &contract_id);
     
     let user = Address::generate(&env);
     let xlm = Symbol::short("XLM");
@@ -283,8 +283,8 @@ fn test_fee_calculations() {
     println!("Testing fee calculations...");
     
     let env = Env::default();
-    let contract_id = env.register_contract_wasm(None, swaptrade_contracts::WASM);
-    let client = swaptrade_contracts::Client::new(&env, &contract_id);
+    let contract_id = env.register_contract_wasm(None, peerx_contracts::WASM);
+    let client = peerx_contracts::Client::new(&env, &contract_id);
     
     let user = Address::generate(&env);
     let xlm = Symbol::short("XLM");
@@ -307,8 +307,8 @@ fn test_slippage_protection() {
     println!("Testing slippage protection...");
     
     let env = Env::default();
-    let contract_id = env.register_contract_wasm(None, swaptrade_contracts::WASM);
-    let client = swaptrade_contracts::Client::new(&env, &contract_id);
+    let contract_id = env.register_contract_wasm(None, peerx_contracts::WASM);
+    let client = peerx_contracts::Client::new(&env, &contract_id);
     
     let user = Address::generate(&env);
     let xlm = Symbol::short("XLM");
@@ -335,7 +335,7 @@ fn test_slippage_protection() {
 
 // Note: This is a demonstration test runner
 // Actual implementation would require the proper contract WASM and client bindings
-mod swaptrade_contracts {
+mod peerx_contracts {
     use soroban_sdk::{Address, Env, Symbol};
     
     pub struct Client;

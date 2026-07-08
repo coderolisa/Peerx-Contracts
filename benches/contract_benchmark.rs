@@ -3,7 +3,7 @@
 
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 use soroban_sdk::{symbol_short, Address, Env, Symbol};
-use swaptrade_contracts::{CounterContract, CounterContractClient};
+use peerx_contracts::{CounterContract, CounterContractClient};
 
 const SWAP_AMOUNT: i128 = 1000;
 const LIQUIDITY_AMOUNT: i128 = 1000000;
@@ -125,7 +125,7 @@ fn bench_batch_operations(c: &mut Criterion) {
         let mut ops = soroban_sdk::vec![env];
         for _ in 0..5 {
             ops.push_back(
-                swaptrade_contracts::BatchOperation::Swap(
+                peerx_contracts::BatchOperation::Swap(
                     symbol_short!("XLM"),
                     symbol_short!("USDCSIM"),
                     SWAP_AMOUNT,
