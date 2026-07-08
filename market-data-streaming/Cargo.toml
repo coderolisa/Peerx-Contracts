@@ -1,8 +1,7 @@
 [package]
 name = "market-data-streaming"
 version = "0.1.0"
-edition = "2021"
-authors = ["SwapTrade Team"]
+edition = "2021"authors = ["PeerX Team"] 
 description = "High-performance real-time market data streaming system"
 
 [dependencies]
