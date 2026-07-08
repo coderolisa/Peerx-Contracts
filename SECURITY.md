@@ -1,8 +1,8 @@
-# SwapTrade Security Documentation
+# PeerX Security Documentation
 
 ## Overview
 
-This document provides a comprehensive security analysis of the SwapTrade smart contracts, including vulnerability assessments, invariant checks, and audit readiness guidelines.
+This document provides a comprehensive security analysis of the PeerX smart contracts, including vulnerability assessments, invariant checks, and audit readiness guidelines.
 
 **Contract Version**: 1  
 **Last Updated**: 2026-02-21  
@@ -377,8 +377,8 @@ proptest! {
 ## Security Contacts
 
 For security issues, please contact:
-- GitHub Issues: [Project Issues](https://github.com/your-org/swaptrade-contracts/issues)
-- Security Email: security@swaptrade.example
+- GitHub Issues: [Project Issues](https://github.com/your-org/peerx-contracts/issues)
+- Security Email: security@peerx.example
 
 ---
 
