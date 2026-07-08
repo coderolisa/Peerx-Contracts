@@ -4,14 +4,14 @@ on:
   push:
     branches: [ main, develop ]
     paths:
-      - 'swaptrade-contracts/**'
-      - 'swaptrade-contracts/counter/tests/formal_verification_tests.rs'
+      - 'peerx-contracts/**'
+      - 'peerx-contracts/counter/tests/formal_verification_tests.rs'
       - '.github/workflows/formal_verification.yml'
   pull_request:
     branches: [ main, develop ]
     paths:
-      - 'swaptrade-contracts/**'
-      - 'swaptrade-contracts/counter/tests/formal_verification_tests.rs'
+      - 'peerx-contracts/**'
+      - 'peerx-contracts/counter/tests/formal_verification_tests.rs'
 
 jobs:
   formal-verification:
@@ -32,29 +32,29 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: |
-            swaptrade-contracts/counter
+            peerx-contracts/counter
 
       - name: Run Formal Verification Integration Suite
         run: |
-          cargo test --manifest-path swaptrade-contracts/counter/Cargo.toml --test formal_verification_tests formal_verification -- --nocapture --test-threads=1
+          cargo test --manifest-path peerx-contracts/counter/Cargo.toml --test formal_verification_tests formal_verification -- --nocapture --test-threads=1
         timeout-minutes: 10
 
       - name: Run Exhaustive Property Tests (10,000+ sequences)
         run: |
-          cargo test --manifest-path swaptrade-contracts/counter/Cargo.toml --test formal_verification_tests exhaustive_ -- --nocapture --test-threads=1
+          cargo test --manifest-path peerx-contracts/counter/Cargo.toml --test formal_verification_tests exhaustive_ -- --nocapture --test-threads=1
         timeout-minutes: 30
 
       - name: Run Witness Cases
         run: |
-          cargo test --manifest-path swaptrade-contracts/counter/Cargo.toml --test formal_verification_tests witness_case -- --nocapture --test-threads=1
+          cargo test --manifest-path peerx-contracts/counter/Cargo.toml --test formal_verification_tests witness_case -- --nocapture --test-threads=1
         timeout-minutes: 10
 
       - name: Run KYC State Machine Test Suite
         run: |
-          cargo test --manifest-path swaptrade-contracts/counter/Cargo.toml --lib kyc_tests:: -- --nocapture --test-threads=1
+          cargo test --manifest-path peerx-contracts/counter/Cargo.toml --lib kyc_tests:: -- --nocapture --test-threads=1
         timeout-minutes: 5
 
       - name: Verify Release Build (no panics)
         run: |
-          cargo build --manifest-path swaptrade-contracts/counter/Cargo.toml --release --verbose
+          cargo build --manifest-path peerx-contracts/counter/Cargo.toml --release --verbose
         timeout-minutes: 15

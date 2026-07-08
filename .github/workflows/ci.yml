@@ -95,13 +95,13 @@ jobs:
         run: cargo test --workspace --lib --verbose
 
       - name: Validate KYC expiry logic
-        run: cargo test --manifest-path swaptrade-contracts/counter/Cargo.toml --lib kyc_tests -- --nocapture
+        run: cargo test --manifest-path peerx-contracts/counter/Cargo.toml --lib kyc_tests -- --nocapture
 
       - name: Validate error catalog consistency
-        run: cargo test --manifest-path swaptrade-contracts/counter/Cargo.toml error_code_tests -- --nocapture
+        run: cargo test --manifest-path peerx-contracts/counter/Cargo.toml error_code_tests -- --nocapture
 
       - name: Run formal verification integration suite
-        run: cargo test --manifest-path swaptrade-contracts/counter/Cargo.toml --test formal_verification_tests formal_verification -- --nocapture --test-threads=1
+        run: cargo test --manifest-path peerx-contracts/counter/Cargo.toml --test formal_verification_tests formal_verification -- --nocapture --test-threads=1
 
   build-release:
     name: Build Release
