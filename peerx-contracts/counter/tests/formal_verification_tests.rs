@@ -1,4 +1,4 @@
-//! Formal Verification Tests for SwapTrade Contract
+//! Formal Verification Tests for PeerX Contract
 //!
 //! This module implements property-based testing to verify critical invariants:
 //! - Asset Conservation: Total supply = sum of user balances

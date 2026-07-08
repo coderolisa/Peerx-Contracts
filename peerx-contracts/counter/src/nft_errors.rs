@@ -1,4 +1,4 @@
-/// NFT-specific errors for the SwapTrade NFT marketplace
+/// NFT-specific errors for the PeerX NFT marketplace
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum NFTError {
     // ===== General Errors (1000-1099) =====

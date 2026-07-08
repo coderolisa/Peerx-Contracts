@@ -1,6 +1,6 @@
 //! Contract Invariants Module
 //!
-//! This module provides comprehensive invariant checking for the SwapTrade contract.
+//! This module provides comprehensive invariant checking for the PeerX contract.
 //! All critical security properties are verified through these functions.
 
 use soroban_sdk::{symbol_short, Address, Env, Symbol, Vec};

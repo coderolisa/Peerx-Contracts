@@ -1,8 +1,8 @@
 [workspace]
 resolver = "2"
 members = [
-  "swaptrade-contracts/counter",
-  "swaptrade-contracts/soroban-ping",
+  "peerx-contracts/counter",
+  "peerx-contracts/soroban-ping",
 ]
 
 [workspace.dependencies]

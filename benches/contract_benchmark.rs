@@ -1,4 +1,4 @@
-//! Performance benchmarks for SwapTrade contract operations
+//! Performance benchmarks for PeerX contract operations
 //! Uses Criterion for statistical benchmarking
 
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};

@@ -2,7 +2,7 @@
 //! This file demonstrates execution of all enhanced trading tests
 //!
 //! To run these tests:
-//! cargo test -p swaptrade-contracts --test comprehensive_trading_test_runner
+//! cargo test -p peerx-contracts --test comprehensive_trading_test_runner
 
 use soroban_sdk::{vec, Address, Env, Symbol, Vec};
 

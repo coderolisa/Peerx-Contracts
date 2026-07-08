@@ -1,4 +1,4 @@
-//! Fuzz Testing Module for SwapTrade Contract
+//! Fuzz Testing Module for PeerX Contract
 //!
 //! This module contains property-based tests using random inputs to verify
 //! contract behavior under edge cases and unexpected conditions.

@@ -1,6 +1,6 @@
 use soroban_sdk::contracterror;
 
-/// Unified error catalog for SwapTrade contracts.
+/// Unified error catalog for PeerX contracts.
 ///
 /// Code ranges:
 ///   1–9      Admin / access control

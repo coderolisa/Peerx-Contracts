@@ -1,6 +1,6 @@
-//! SwapTrade Contract Performance Benchmark Runner
+//! PeerX Contract Performance Benchmark Runner
 //! 
-//! This executable runs comprehensive performance benchmarks on the SwapTrade contract
+//! This executable runs comprehensive performance benchmarks on the PeerX contract
 //! to establish performance baselines and detect regressions.
 
 use std::time::Instant;
@@ -129,7 +129,7 @@ impl OptimizationAnalyzer {
 }
 
 fn main() {
-    println!("🚀 Starting SwapTrade Contract Performance Benchmark Suite...");
+    println!("🚀 Starting PeerX Contract Performance Benchmark Suite...");
     
     // Run the benchmarks
     run_benchmarks();

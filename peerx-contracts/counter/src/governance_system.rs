@@ -3,7 +3,7 @@ use crate::errors::PeerXError;
 use crate::governance_types::*;
 use crate::events::Events;
 
-/// On-chain governance system for SwapTrade
+/// On-chain governance system for PeerX
 pub struct GovernanceSystem;
 
 impl GovernanceSystem {
