@@ -24,8 +24,3 @@ incremental = false
 inherits = "release"
 debug-assertions = true
 
-
-
-
-[patch.crates-io]
-ed25519-dalek = { git = "https://github.com/dalek-cryptography/ed25519-dalek", tag = "v2.1.1" }
