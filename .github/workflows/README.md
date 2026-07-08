@@ -43,7 +43,9 @@ Runs four commands:
    easier to triage in CI logs.
 3. `cargo test --manifest-path peerx-contracts/counter/Cargo.toml error_code_tests -- --nocapture`
    The error-code regression suite — every `PeerXError` variant must
-   resolve to the exact u32 value documented in `errors.rs`.
+   resolve to the exact u32 value documented in `errors.rs`. (Note: this
+   suite was NOT in `formal_verification.yml`; it's a peerx-cargo test
+   that pairs with the renumbered `SwapTradeError -> PeerXError` enum.)
 4. `cargo test --manifest-path peerx-contracts/counter/Cargo.toml --test formal_verification_tests formal_verification -- --nocapture --test-threads=1`
    Property-based formal-verification integration tests, single-threaded.
 
@@ -61,9 +63,29 @@ without adding signal.
 
 | Intentionally left out | Why |
 |---|---|
-| Release build | Not a merge gate; release profile sometimes masks errors that debug catches. Deploy pipelines handle this. |
+| Release build | Not a merge gate; release profile sometimes masks errors that debug catches. Deploy pipelines handle this. **However:** for Soroban the release-mode WASM IS the on-chain deploy artifact, and the workspace `[profile.release]` has `lto = "fat"` / `opt-level = "z"` / `debug-assertions = false` — LTO-time const evaluation can surface errors missed by debug builds. Plan to reintroduce a release-build gate before mainnet deployment. |
 | Auto-format-and-push on main | Was a force-push bot with `403 permission denied` on its GitHub token AND a bad practice (CI reformatting committed code creates noisy diffs). |
-| The exhaustive 10k-sequence property test | Took 30 min on CI; the property test framework's `--nocapture --test-threads=1` mode is already fast enough via the targeted invoke in the `test` job. |
+| The `exhaustive_` 10k-sequence property test | Took 30 min on CI; redundant with the targeted `formal_verification` filter step. **However:** this was the most coverage-dense test in the prior CI setup (10k randomly-generated sequences per run) and dropping it is a real coverage loss. The fast gated set still catches typical regressions; flagging this for future reintroduction is correct. |
+| The `witness_case` step | Most `witness_case` tests are `#[ignore]` — annotated and don't run by default. |
+
+## Coverage delta vs. deleted `formal_verification.yml`
+
+The deleted workflow had five steps. Here is what is preserved vs.
+genuinely lost in the slim `ci.yml` `test` job:
+
+| Step in old `formal_verification.yml` | Coverage in current `ci.yml` |
+|---|---|
+| `formal_verification` filter | ✅ step 4 above |
+| `kyc_tests::` filter | ✅ step 2 above |
+| `error_code_tests` filter | ✅ step 3 above (new addition, not a duplicate of anything old) |
+| `exhaustive_` 10k-sequences filter | ❌ dropped — the slowest but most coverage-dense test |
+| `witness_case` filter | ❌ dropped — most are `#[ignore]`'d anyway |
+| Final release build | ❌ dropped (already handled by Build Release discussion) |
+
+The current `ci.yml` `test` job covers a subset of the old
+`formal_verification.yml`, **not** the full superset. Reintroducing the
+`exhaustive_` property test (e.g., on a schedule, or as an opt-in PR
+label) would close the gap.
 
 ## Editor setup (contributor)
 
