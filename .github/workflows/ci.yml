@@ -102,29 +102,3 @@ jobs:
 
       - name: Run formal verification integration suite
         run: cargo test --manifest-path peerx-contracts/counter/Cargo.toml --test formal_verification_tests formal_verification -- --nocapture --test-threads=1
-
-  build-release:
-    name: Build Release
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache cargo registry
-        uses: actions/cache@v3
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-
-
-      - name: Build release
-        run: cargo build --workspace --release --verbose
