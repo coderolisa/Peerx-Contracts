@@ -6,7 +6,7 @@ members = [
 ]
 
 [workspace.dependencies]
-soroban-sdk = "22.0.0"
+soroban-sdk = "21.7.1"
 
 [profile.release]
 opt-level = "z"
@@ -23,6 +23,9 @@ incremental = false
 [profile.release-with-logs]
 inherits = "release"
 debug-assertions = true
+
+[patch.crates-io]
+ed25519-dalek = "=2.1.1"
 
 
 
