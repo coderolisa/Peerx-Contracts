@@ -1,4 +1,4 @@
-use soroban_sdk::{Address, contracttype, Symbol, symbol_short};
+use soroban_sdk::{Address, Symbol, contracttype, symbol_short};
 
 pub const ADMIN_KEY: Symbol = symbol_short!("admin");
 pub const PAUSED_KEY: Symbol = symbol_short!("paused");
