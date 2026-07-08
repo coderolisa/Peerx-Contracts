@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Performance Regression Detection Script for SwapTrade Contract
+Performance Regression Detection Script for PeerX Contract
 
 This script compares benchmark results against stored baselines to detect performance regressions.
 """
@@ -110,7 +110,7 @@ DETAILED RESULTS:
         results_with_metadata = {
             "__metadata__": {
                 "generated_at": timestamp,
-                "description": "Baseline performance metrics for SwapTrade contract",
+                "description": "Baseline performance metrics for PeerX contract",
                 "threshold_percent": self.threshold_percent
             },
             **results
@@ -141,7 +141,7 @@ DETAILED RESULTS:
 
 def main():
     """Main entry point."""
-    print("🚀 Starting SwapTrade Performance Regression Detection...")
+    print("🚀 Starting PeerX Performance Regression Detection...")
     
     # Create detector with 10% threshold
     detector = RegressionDetector(threshold_percent=10.0)

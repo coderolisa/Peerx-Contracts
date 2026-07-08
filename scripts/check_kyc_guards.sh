@@ -2,8 +2,8 @@
 
 set -euo pipefail
 
-LIB_FILE="swaptrade-contracts/counter/src/lib.rs"
-BATCH_FILE="swaptrade-contracts/counter/batch.rs"
+LIB_FILE="peerx-contracts/counter/src/lib.rs"
+BATCH_FILE="peerx-contracts/counter/batch.rs"
 
 SENSITIVE_ENTRYPOINTS=(
   swap

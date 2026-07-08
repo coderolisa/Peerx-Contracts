@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Formal Verification Test Script
-# This script runs all formal verification tests for the SwapTrade contract
+# This script runs all formal verification tests for the PeerX contract
 # Usage: ./scripts/verify_formal.sh [--no-exhaustive] [--coverage] [--quick]
 
 set -e
@@ -14,7 +14,7 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Configuration
-PROJECT_DIR="swaptrade-contracts/counter"
+PROJECT_DIR="peerx-contracts/counter"
 RUN_EXHAUSTIVE=true
 RUN_COVERAGE=false
 QUICK_MODE=false
@@ -43,7 +43,7 @@ done
 
 # Print header
 echo -e "${BLUE}╔════════════════════════════════════════════════════════════════╗${NC}"
-echo -e "${BLUE}║         SwapTrade Formal Verification Test Suite               ║${NC}"
+echo -e "${BLUE}║         PeerX Formal Verification Test Suite               ║${NC}"
 echo -e "${BLUE}╚════════════════════════════════════════════════════════════════╝${NC}"
 echo ""
 
