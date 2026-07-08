@@ -10,7 +10,7 @@
 //! - Use local variables for state reads
 //! - Validate before commit
 
-use soroban_sdk::{contracttype, Env, Address, Symbol};
+use soroban_sdk::{Address, Env, Symbol, contracttype};
 
 /// Snapshot of critical state for validation
 #[contracttype]
