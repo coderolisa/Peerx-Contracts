@@ -1,6 +1,6 @@
-# SwapTrade Contracts
+# PeerX Contracts
 
-This repository contains **Soroban smart contracts** for [SwapTrade](https://github.com/your-org/swaptrade), an educational trading simulator built on the **Stellar ecosystem**. 
+This repository contains **Soroban smart contracts** for [PeerX](https://github.com/your-org/peerx), an educational trading simulator built on the **Stellar ecosystem**. 
 
 The contracts replicate key features of real-world cryptocurrency trading in a **risk-free, simulated environment**:
 
@@ -37,7 +37,7 @@ The contract auto-pauses when swap volume exceeds configured threshold.
 
 
 ## Repository Structure
-swaptrade-contracts/
+peerx-contracts/
 │── Cargo.toml # Rust dependencies
 │── src/
 │ ├── lib.rs # main contract logic
@@ -55,13 +55,13 @@ swaptrade-contracts/
 1. Install [Soroban CLI](https://soroban.stellar.org/docs/getting-started/setup).
 2. Clone this repo:
    ```bash
-   git clone https://github.com/your-org/swaptrade-contracts.git
-   cd swaptrade-contracts
+   git clone https://github.com/your-org/peerx-contracts.git
+   cd peerx-contracts
    ```
 
 ## Migration Process
 
-SwapTrade contracts support versioning and data migration to ensure historical data is preserved during upgrades.
+PeerX contracts support versioning and data migration to ensure historical data is preserved during upgrades.
 
 ### Versioning
 - `CONTRACT_VERSION` is defined in `lib.rs`.
