@@ -1,7 +1,7 @@
 use soroban_sdk::{
     Env, testutils::{Accounts, Ledger},
 };
-use crate::contract::SwapTradeContract;
+use crate::contract::PeerXContract;
 
 struct TestContext {
     env: Env,
@@ -20,7 +20,7 @@ fn setup() -> TestContext {
         .collect();
 
     // Optional: initialize contract
-    // SwapTradeContract::initialize(&env, &admin);
+    // PeerXContract::initialize(&env, &admin);
 
     TestContext { env, admin, users }
 }
@@ -34,12 +34,12 @@ fn test_user_onboarding_and_initial_balances() {
     let user = &ctx.users[0];
 
     // Mint tokens
-    SwapTradeContract::mint_xlm(&ctx.env, user, &1000);
-    SwapTradeContract::mint_usdc(&ctx.env, user, &500);
+    PeerXContract::mint_xlm(&ctx.env, user, &1000);
+    PeerXContract::mint_usdc(&ctx.env, user, &500);
 
     // Verify balances
-    let xlm = SwapTradeContract::balance_xlm(&ctx.env, user);
-    let usdc = SwapTradeContract::balance_usdc(&ctx.env, user);
+    let xlm = PeerXContract::balance_xlm(&ctx.env, user);
+    let usdc = PeerXContract::balance_usdc(&ctx.env, user);
 
     assert_eq!(xlm, 1000);
     assert_eq!(usdc, 500);
@@ -54,15 +54,15 @@ fn test_user_trading_flow_and_pnl() {
     let ctx = setup();
     let user = &ctx.users[0];
 
-    SwapTradeContract::mint_usdc(&ctx.env, user, &1000);
+    PeerXContract::mint_usdc(&ctx.env, user, &1000);
 
     // Perform swaps
-    SwapTradeContract::swap_usdc_to_xlm(&ctx.env, user, &100);
-    SwapTradeContract::swap_xlm_to_usdc(&ctx.env, user, &50);
-    SwapTradeContract::swap_usdc_to_xlm(&ctx.env, user, &200);
+    PeerXContract::swap_usdc_to_xlm(&ctx.env, user, &100);
+    PeerXContract::swap_xlm_to_usdc(&ctx.env, user, &50);
+    PeerXContract::swap_usdc_to_xlm(&ctx.env, user, &200);
 
-    let history = SwapTradeContract::trade_history(&ctx.env, user);
-    let pnl = SwapTradeContract::pnl(&ctx.env, user);
+    let history = PeerXContract::trade_history(&ctx.env, user);
+    let pnl = PeerXContract::pnl(&ctx.env, user);
 
     assert_eq!(history.len(), 3);
     assert!(pnl != 0);
@@ -78,13 +78,13 @@ fn test_multi_user_trading_isolated_balances() {
     let (u1, u2, u3) = (&ctx.users[0], &ctx.users[1], &ctx.users[2]);
 
     for user in [u1, u2, u3] {
-        SwapTradeContract::mint_usdc(&ctx.env, user, &500);
-        SwapTradeContract::swap_usdc_to_xlm(&ctx.env, user, &100);
+        PeerXContract::mint_usdc(&ctx.env, user, &500);
+        PeerXContract::swap_usdc_to_xlm(&ctx.env, user, &100);
     }
 
     assert_ne!(
-        SwapTradeContract::balance_xlm(&ctx.env, u1),
-        SwapTradeContract::balance_xlm(&ctx.env, u2),
+        PeerXContract::balance_xlm(&ctx.env, u1),
+        PeerXContract::balance_xlm(&ctx.env, u2),
     );
 }
 
@@ -98,13 +98,13 @@ fn test_lp_and_trader_coexistence() {
     let lp = &ctx.users[0];
     let trader = &ctx.users[1];
 
-    SwapTradeContract::mint_usdc(&ctx.env, lp, &5000);
-    SwapTradeContract::add_liquidity(&ctx.env, lp, &2000);
+    PeerXContract::mint_usdc(&ctx.env, lp, &5000);
+    PeerXContract::add_liquidity(&ctx.env, lp, &2000);
 
-    SwapTradeContract::mint_usdc(&ctx.env, trader, &500);
-    SwapTradeContract::swap_usdc_to_xlm(&ctx.env, trader, &200);
+    PeerXContract::mint_usdc(&ctx.env, trader, &500);
+    PeerXContract::swap_usdc_to_xlm(&ctx.env, trader, &200);
 
-    let pool = SwapTradeContract::pool_state(&ctx.env);
+    let pool = PeerXContract::pool_state(&ctx.env);
     assert!(pool.total_liquidity > 0);
 }
 
@@ -117,13 +117,13 @@ fn test_badge_progression_after_multiple_trades() {
     let ctx = setup();
     let user = &ctx.users[0];
 
-    SwapTradeContract::mint_usdc(&ctx.env, user, &2000);
+    PeerXContract::mint_usdc(&ctx.env, user, &2000);
 
     for _ in 0..10 {
-        SwapTradeContract::swap_usdc_to_xlm(&ctx.env, user, &50);
+        PeerXContract::swap_usdc_to_xlm(&ctx.env, user, &50);
     }
 
-    let badges = SwapTradeContract::badges(&ctx.env, user);
+    let badges = PeerXContract::badges(&ctx.env, user);
     assert!(badges.len() >= 2);
 }
 
@@ -136,14 +136,14 @@ fn test_state_persistence_across_restart() {
     let ctx = setup();
     let user = &ctx.users[0];
 
-    SwapTradeContract::mint_usdc(&ctx.env, user, &500);
+    PeerXContract::mint_usdc(&ctx.env, user, &500);
 
     let snapshot = ctx.env.clone();
 
     // Simulate restart
     let new_env = snapshot;
 
-    let balance = SwapTradeContract::balance_usdc(&new_env, user);
+    let balance = PeerXContract::balance_usdc(&new_env, user);
     assert_eq!(balance, 500);
 }
 
@@ -155,15 +155,15 @@ fn test_invalid_trade_does_not_corrupt_state() {
     let ctx = setup();
     let user = &ctx.users[0];
 
-    SwapTradeContract::mint_usdc(&ctx.env, user, &100);
+    PeerXContract::mint_usdc(&ctx.env, user, &100);
 
     let result = std::panic::catch_unwind(|| {
-        SwapTradeContract::swap_usdc_to_xlm(&ctx.env, user, &10_000);
+        PeerXContract::swap_usdc_to_xlm(&ctx.env, user, &10_000);
     });
 
     assert!(result.is_err());
 
-    let balance = SwapTradeContract::balance_usdc(&ctx.env, user);
+    let balance = PeerXContract::balance_usdc(&ctx.env, user);
     assert_eq!(balance, 100);
 }
 
