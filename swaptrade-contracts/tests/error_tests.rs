@@ -1,11 +1,11 @@
-/// Error catalog tests — verifies exact SwapTradeError codes for every revert path.
+/// Error catalog tests — verifies exact PeerXError codes for every revert path.
 ///
 /// Each test asserts the *specific* variant returned, ensuring no two failure
 /// modes share a code and no generic/ambiguous errors are used.
 #[cfg(test)]
 mod error_code_tests {
     use soroban_sdk::{symbol_short, Env};
-    use crate::errors::SwapTradeError;
+    use crate::errors::PeerXError;
     use crate::validation::{validate_amount, validate_token_symbol, validate_swap_pair};
     use crate::staking_bonus::StakingBonusManager;
     use crate::emergency;
@@ -15,35 +15,35 @@ mod error_code_tests {
     #[test]
     fn test_zero_amount_returns_invalid_amount() {
         let result = validate_amount(0);
-        assert_eq!(result, Err(SwapTradeError::InvalidAmount));
-        assert_eq!(SwapTradeError::InvalidAmount as u32, 100);
+        assert_eq!(result, Err(PeerXError::InvalidAmount));
+        assert_eq!(PeerXError::InvalidAmount as u32, 100);
     }
 
     #[test]
     fn test_negative_amount_returns_invalid_amount() {
         let result = validate_amount(-1);
-        assert_eq!(result, Err(SwapTradeError::InvalidAmount));
+        assert_eq!(result, Err(PeerXError::InvalidAmount));
     }
 
     #[test]
     fn test_overflow_amount_returns_amount_overflow() {
         let result = validate_amount(1_000_000_000_000_000_001);
-        assert_eq!(result, Err(SwapTradeError::AmountOverflow));
-        assert_eq!(SwapTradeError::AmountOverflow as u32, 101);
+        assert_eq!(result, Err(PeerXError::AmountOverflow));
+        assert_eq!(PeerXError::AmountOverflow as u32, 101);
     }
 
     #[test]
     fn test_invalid_token_symbol_returns_invalid_token_symbol() {
         let result = validate_token_symbol(symbol_short!("FAKE"));
-        assert_eq!(result, Err(SwapTradeError::InvalidTokenSymbol));
-        assert_eq!(SwapTradeError::InvalidTokenSymbol as u32, 102);
+        assert_eq!(result, Err(PeerXError::InvalidTokenSymbol));
+        assert_eq!(PeerXError::InvalidTokenSymbol as u32, 102);
     }
 
     #[test]
     fn test_same_token_swap_returns_invalid_swap_pair() {
         let result = validate_swap_pair(symbol_short!("XLM"), symbol_short!("XLM"));
-        assert_eq!(result, Err(SwapTradeError::InvalidSwapPair));
-        assert_eq!(SwapTradeError::InvalidSwapPair as u32, 103);
+        assert_eq!(result, Err(PeerXError::InvalidSwapPair));
+        assert_eq!(PeerXError::InvalidSwapPair as u32, 103);
     }
 
     // ── Rate limiting / slippage (300–301) ──────────────────────────────────
@@ -51,11 +51,11 @@ mod error_code_tests {
     #[test]
     fn test_error_codes_rate_limit_and_slippage_are_distinct() {
         assert_ne!(
-            SwapTradeError::RateLimitExceeded as u32,
-            SwapTradeError::SlippageExceeded as u32
+            PeerXError::RateLimitExceeded as u32,
+            PeerXError::SlippageExceeded as u32
         );
-        assert_eq!(SwapTradeError::RateLimitExceeded as u32, 300);
-        assert_eq!(SwapTradeError::SlippageExceeded as u32, 301);
+        assert_eq!(PeerXError::RateLimitExceeded as u32, 300);
+        assert_eq!(PeerXError::SlippageExceeded as u32, 301);
     }
 
     // ── LP errors (400–401) ─────────────────────────────────────────────────
@@ -63,29 +63,29 @@ mod error_code_tests {
     #[test]
     fn test_error_codes_lp_variants_are_distinct() {
         assert_ne!(
-            SwapTradeError::LPPositionNotFound as u32,
-            SwapTradeError::InsufficientLPTokens as u32
+            PeerXError::LPPositionNotFound as u32,
+            PeerXError::InsufficientLPTokens as u32
         );
-        assert_eq!(SwapTradeError::LPPositionNotFound as u32, 400);
-        assert_eq!(SwapTradeError::InsufficientLPTokens as u32, 401);
+        assert_eq!(PeerXError::LPPositionNotFound as u32, 400);
+        assert_eq!(PeerXError::InsufficientLPTokens as u32, 401);
     }
 
     // ── KYC errors (500–510) ────────────────────────────────────────────────
 
     #[test]
     fn test_kyc_error_codes_are_unique_and_in_range() {
-        let kyc_variants: &[(SwapTradeError, u32)] = &[
-            (SwapTradeError::KYCVerificationRequired, 500),
-            (SwapTradeError::NotKYCOperator, 501),
-            (SwapTradeError::InvalidKYCStateTransition, 502),
-            (SwapTradeError::KYCTerminalStateImmutable, 503),
-            (SwapTradeError::SelfVerificationNotAllowed, 504),
-            (SwapTradeError::KYCOverrideNotFound, 505),
-            (SwapTradeError::KYCTimelockNotElapsed, 506),
-            (SwapTradeError::KYCOverrideAlreadyExecuted, 507),
-            (SwapTradeError::InvalidTimelockDuration, 508),
-            (SwapTradeError::KYCRequestExpired, 509),
-            (SwapTradeError::InvalidExpiryDuration, 510),
+        let kyc_variants: &[(PeerXError, u32)] = &[
+            (PeerXError::KYCVerificationRequired, 500),
+            (PeerXError::NotKYCOperator, 501),
+            (PeerXError::InvalidKYCStateTransition, 502),
+            (PeerXError::KYCTerminalStateImmutable, 503),
+            (PeerXError::SelfVerificationNotAllowed, 504),
+            (PeerXError::KYCOverrideNotFound, 505),
+            (PeerXError::KYCTimelockNotElapsed, 506),
+            (PeerXError::KYCOverrideAlreadyExecuted, 507),
+            (PeerXError::InvalidTimelockDuration, 508),
+            (PeerXError::KYCRequestExpired, 509),
+            (PeerXError::InvalidExpiryDuration, 510),
         ];
 
         let mut seen = std::collections::HashSet::new();
@@ -103,8 +103,8 @@ mod error_code_tests {
         let env = Env::default();
         let user = soroban_sdk::Address::generate(&env);
         let result = StakingBonusManager::stake(&env, user, 100, 45); // 45 is not a valid tier
-        assert_eq!(result, Err(SwapTradeError::InvalidStakeDuration));
-        assert_eq!(SwapTradeError::InvalidStakeDuration as u32, 600);
+        assert_eq!(result, Err(PeerXError::InvalidStakeDuration));
+        assert_eq!(PeerXError::InvalidStakeDuration as u32, 600);
     }
 
     #[test]
@@ -112,7 +112,7 @@ mod error_code_tests {
         let env = Env::default();
         let user = soroban_sdk::Address::generate(&env);
         let result = StakingBonusManager::stake(&env, user, 0, 30);
-        assert_eq!(result, Err(SwapTradeError::InvalidAmount));
+        assert_eq!(result, Err(PeerXError::InvalidAmount));
     }
 
     #[test]
@@ -120,8 +120,8 @@ mod error_code_tests {
         let env = Env::default();
         let user = soroban_sdk::Address::generate(&env);
         let result = StakingBonusManager::claim_stake(&env, user, 99);
-        assert_eq!(result, Err(SwapTradeError::StakeNotFound));
-        assert_eq!(SwapTradeError::StakeNotFound as u32, 601);
+        assert_eq!(result, Err(PeerXError::StakeNotFound));
+        assert_eq!(PeerXError::StakeNotFound as u32, 601);
     }
 
     #[test]
@@ -129,7 +129,7 @@ mod error_code_tests {
         let env = Env::default();
         let user = soroban_sdk::Address::generate(&env);
         let result = StakingBonusManager::claim_bonuses(&env, user);
-        assert_eq!(result, Err(SwapTradeError::StakeNotFound));
+        assert_eq!(result, Err(PeerXError::StakeNotFound));
     }
 
     #[test]
@@ -138,19 +138,19 @@ mod error_code_tests {
         // First call succeeds; second call within the period should fail.
         let _ = StakingBonusManager::execute_distribution(&env);
         let result = StakingBonusManager::execute_distribution(&env);
-        assert_eq!(result, Err(SwapTradeError::DistributionTooEarly));
-        assert_eq!(SwapTradeError::DistributionTooEarly as u32, 605);
+        assert_eq!(result, Err(PeerXError::DistributionTooEarly));
+        assert_eq!(PeerXError::DistributionTooEarly as u32, 605);
     }
 
     #[test]
     fn test_staking_error_codes_are_unique() {
-        let staking_variants: &[(SwapTradeError, u32)] = &[
-            (SwapTradeError::InvalidStakeDuration, 600),
-            (SwapTradeError::StakeNotFound, 601),
-            (SwapTradeError::StakeNotActive, 602),
-            (SwapTradeError::StakeLocked, 603),
-            (SwapTradeError::NoClaimableBonuses, 604),
-            (SwapTradeError::DistributionTooEarly, 605),
+        let staking_variants: &[(PeerXError, u32)] = &[
+            (PeerXError::InvalidStakeDuration, 600),
+            (PeerXError::StakeNotFound, 601),
+            (PeerXError::StakeNotActive, 602),
+            (PeerXError::StakeLocked, 603),
+            (PeerXError::NoClaimableBonuses, 604),
+            (PeerXError::DistributionTooEarly, 605),
         ];
 
         let mut seen = std::collections::HashSet::new();
@@ -168,8 +168,8 @@ mod error_code_tests {
         let env = Env::default();
         let non_admin = soroban_sdk::Address::generate(&env);
         let result = emergency::pause(&env, non_admin);
-        assert_eq!(result, Err(SwapTradeError::NotEmergencyAdmin));
-        assert_eq!(SwapTradeError::NotEmergencyAdmin as u32, 700);
+        assert_eq!(result, Err(PeerXError::NotEmergencyAdmin));
+        assert_eq!(PeerXError::NotEmergencyAdmin as u32, 700);
     }
 
     #[test]
@@ -178,23 +178,23 @@ mod error_code_tests {
         let non_admin = soroban_sdk::Address::generate(&env);
         let target = soroban_sdk::Address::generate(&env);
         let result = emergency::freeze_user(&env, non_admin, target);
-        assert_eq!(result, Err(SwapTradeError::NotEmergencyAdmin));
+        assert_eq!(result, Err(PeerXError::NotEmergencyAdmin));
     }
 
     // ── Trading state errors (10–12) ────────────────────────────────────────
 
     #[test]
     fn test_trading_state_error_codes_are_distinct() {
-        assert_eq!(SwapTradeError::TradingPaused as u32, 10);
-        assert_eq!(SwapTradeError::UserFrozen as u32, 11);
-        assert_eq!(SwapTradeError::CircuitBreakerTripped as u32, 12);
+        assert_eq!(PeerXError::TradingPaused as u32, 10);
+        assert_eq!(PeerXError::UserFrozen as u32, 11);
+        assert_eq!(PeerXError::CircuitBreakerTripped as u32, 12);
     }
 
     // ── Admin errors (1) ────────────────────────────────────────────────────
 
     #[test]
     fn test_not_admin_error_code() {
-        assert_eq!(SwapTradeError::NotAdmin as u32, 1);
+        assert_eq!(PeerXError::NotAdmin as u32, 1);
     }
 
     // ── Global uniqueness across all codes ──────────────────────────────────

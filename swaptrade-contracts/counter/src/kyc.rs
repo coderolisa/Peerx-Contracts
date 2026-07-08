@@ -157,8 +157,8 @@ pub const DEFAULT_PENDING_EXPIRY_DURATION: u64 = 30 * 24 * 60 * 60;
 /// Minimum pending KYC expiry duration (7 days)
 pub const MIN_PENDING_EXPIRY_DURATION: u64 = 7 * 24 * 60 * 60;
 
-/// KYC error type alias — all KYC errors are variants of the unified SwapTradeError.
-pub type KYCError = crate::errors::SwapTradeError;
+/// KYC error type alias — all KYC errors are variants of the unified PeerXError.
+pub type KYCError = crate::errors::PeerXError;
 
 // ── Input validation (#159) ───────────────────────────────────────────────────
 

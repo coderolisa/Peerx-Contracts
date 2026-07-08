@@ -1,6 +1,6 @@
 use soroban_sdk::{Address, Env};
 
-use crate::errors::SwapTradeError;
+use crate::errors::PeerXError;
 use crate::storage::ADMIN_KEY;
 
 pub fn is_admin(env: &Env, user: &Address) -> bool {
@@ -11,10 +11,10 @@ pub fn is_admin(env: &Env, user: &Address) -> bool {
         .unwrap_or(false)
 }
 
-pub fn require_admin(env: &Env, caller: &Address) -> Result<(), SwapTradeError> {
+pub fn require_admin(env: &Env, caller: &Address) -> Result<(), PeerXError> {
     if is_admin(env, caller) {
         Ok(())
     } else {
-        Err(SwapTradeError::NotAdmin)
+        Err(PeerXError::NotAdmin)
     }
 }

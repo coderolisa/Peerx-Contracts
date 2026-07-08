@@ -14,7 +14,7 @@ use soroban_sdk::contracterror;
 ///   700–709  Emergency / circuit-breaker
 #[contracterror]
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub enum SwapTradeError {
+pub enum PeerXError {
     // ── Admin / access control ──────────────────────────────────────────────
     NotAdmin = 1,
 
@@ -85,4 +85,4 @@ pub enum SwapTradeError {
 }
 
 /// Alias kept for modules that still import `ContractError` by name.
-pub type ContractError = SwapTradeError;
+pub type ContractError = PeerXError;

@@ -12,7 +12,7 @@
 /// - 90 days:  20% bonus
 /// - 365 days: 50% bonus
 use soroban_sdk::{contracttype, symbol_short, Address, Env, Vec};
-use crate::errors::SwapTradeError;
+use crate::errors::PeerXError;
 
 // ────────────────────────────────────────────────────────────────────────────
 // Constants
@@ -144,9 +144,9 @@ impl StakingBonusManager {
         user: Address,
         amount: i128,
         duration_days: u32,
-    ) -> Result<u32, SwapTradeError> {
+    ) -> Result<u32, PeerXError> {
         if amount <= 0 {
-            return Err(SwapTradeError::InvalidAmount);
+            return Err(PeerXError::InvalidAmount);
         }
 
         let duration_secs = match duration_days {
@@ -154,7 +154,7 @@ impl StakingBonusManager {
             60 => TIER_60_DAYS_SECS,
             90 => TIER_90_DAYS_SECS,
             365 => TIER_365_DAYS_SECS,
-            _ => return Err(SwapTradeError::InvalidStakeDuration),
+            _ => return Err(PeerXError::InvalidStakeDuration),
         };
 
         let current_time = env.ledger().timestamp();
@@ -166,7 +166,7 @@ impl StakingBonusManager {
             60 => TIER_60_DAYS_BONUS_BPS,
             90 => TIER_90_DAYS_BONUS_BPS,
             365 => TIER_365_DAYS_BONUS_BPS,
-            _ => return Err(SwapTradeError::InvalidStakeDuration),
+            _ => return Err(PeerXError::InvalidStakeDuration),
         };
 
         let bonus_amount = Self::calculate_bonus(amount, bonus_bps);
@@ -254,21 +254,21 @@ impl StakingBonusManager {
     ///
     /// # Returns
     /// Result with (principal_returned, penalty) or error
-    pub fn unstake_early(env: &Env, user: Address, stake_id: u32) -> Result<(i128, i128), SwapTradeError> {
+    pub fn unstake_early(env: &Env, user: Address, stake_id: u32) -> Result<(i128, i128), PeerXError> {
         let mut stakes: Vec<StakeRecord> = env
             .storage()
             .persistent()
             .get(&StakingBonusKey::UserStakes(user.clone()))
-            .ok_or(SwapTradeError::StakeNotFound)?;
+            .ok_or(PeerXError::StakeNotFound)?;
 
         if stake_id >= stakes.len() {
-            return Err(SwapTradeError::StakeNotFound);
+            return Err(PeerXError::StakeNotFound);
         }
 
-        let mut stake = stakes.get(stake_id).ok_or(SwapTradeError::StakeNotFound)?;
+        let mut stake = stakes.get(stake_id).ok_or(PeerXError::StakeNotFound)?;
 
         if !stake.is_active {
-            return Err(SwapTradeError::StakeNotActive);
+            return Err(PeerXError::StakeNotActive);
         }
 
         // Calculate penalty: 10% of principal
@@ -330,12 +330,12 @@ impl StakingBonusManager {
     ///
     /// # Returns
     /// Result with total bonuses claimed or error
-    pub fn claim_bonuses(env: &Env, user: Address) -> Result<i128, SwapTradeError> {
+    pub fn claim_bonuses(env: &Env, user: Address) -> Result<i128, PeerXError> {
         let mut stakes: Vec<StakeRecord> = env
             .storage()
             .persistent()
             .get(&StakingBonusKey::UserStakes(user.clone()))
-            .ok_or(SwapTradeError::StakeNotFound)?;
+            .ok_or(PeerXError::StakeNotFound)?;
 
         let current_time = env.ledger().timestamp();
         let mut total_claimed = 0i128;
@@ -356,7 +356,7 @@ impl StakingBonusManager {
         }
 
         if total_claimed == 0 {
-            return Err(SwapTradeError::NoClaimableBonuses);
+            return Err(PeerXError::NoClaimableBonuses);
         }
 
         // Update storage
@@ -404,27 +404,27 @@ impl StakingBonusManager {
     ///
     /// # Returns
     /// Result with principal amount or error
-    pub fn claim_stake(env: &Env, user: Address, stake_id: u32) -> Result<i128, SwapTradeError> {
+    pub fn claim_stake(env: &Env, user: Address, stake_id: u32) -> Result<i128, PeerXError> {
         let mut stakes: Vec<StakeRecord> = env
             .storage()
             .persistent()
             .get(&StakingBonusKey::UserStakes(user.clone()))
-            .ok_or(SwapTradeError::StakeNotFound)?;
+            .ok_or(PeerXError::StakeNotFound)?;
 
         if stake_id >= stakes.len() {
-            return Err(SwapTradeError::StakeNotFound);
+            return Err(PeerXError::StakeNotFound);
         }
 
-        let mut stake = stakes.get(stake_id).ok_or(SwapTradeError::StakeNotFound)?;
+        let mut stake = stakes.get(stake_id).ok_or(PeerXError::StakeNotFound)?;
 
         if !stake.is_active {
-            return Err(SwapTradeError::StakeNotActive);
+            return Err(PeerXError::StakeNotActive);
         }
 
         let current_time = env.ledger().timestamp();
 
         if current_time < stake.unlock_at {
-            return Err(SwapTradeError::StakeLocked);
+            return Err(PeerXError::StakeLocked);
         }
 
         let principal = stake.amount;
@@ -482,7 +482,7 @@ impl StakingBonusManager {
     ///
     /// # Returns
     /// Result with distribution summary or error
-    pub fn execute_distribution(env: &Env) -> Result<DistributionRecord, SwapTradeError> {
+    pub fn execute_distribution(env: &Env) -> Result<DistributionRecord, PeerXError> {
         let current_time = env.ledger().timestamp();
 
         let last_distribution: u64 = env
@@ -492,7 +492,7 @@ impl StakingBonusManager {
             .unwrap_or(0);
 
         if current_time < last_distribution + DISTRIBUTION_PERIOD_SECS {
-            return Err(SwapTradeError::DistributionTooEarly);
+            return Err(PeerXError::DistributionTooEarly);
         }
 
         let mut total_distributed = 0i128;
@@ -639,14 +639,14 @@ impl StakingBonusManager {
         env: &Env,
         user: Address,
         stake_id: u32,
-    ) -> Result<StakeRecord, SwapTradeError> {
+    ) -> Result<StakeRecord, PeerXError> {
         let stakes = Self::get_user_stakes(env, user);
 
         if stake_id >= stakes.len() {
-            return Err(SwapTradeError::StakeNotFound);
+            return Err(PeerXError::StakeNotFound);
         }
 
-        stakes.get(stake_id).ok_or(SwapTradeError::StakeNotFound)
+        stakes.get(stake_id).ok_or(PeerXError::StakeNotFound)
     }
 
     /// Get global statistics

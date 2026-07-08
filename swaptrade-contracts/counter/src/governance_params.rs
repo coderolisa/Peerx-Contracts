@@ -6,7 +6,7 @@
 
 use soroban_sdk::{contracttype, symbol_short, Address, Env, Symbol};
 
-use crate::errors::SwapTradeError;
+use crate::errors::PeerXError;
 
 /// Minimum timelock delay: 24 hours in seconds.
 pub const PARAM_TIMELOCK_MIN: u64 = 86_400;
@@ -61,11 +61,11 @@ impl GovernanceParams {
         env: &Env,
         admin: &Address,
         delay: u64,
-    ) -> Result<(), SwapTradeError> {
+    ) -> Result<(), PeerXError> {
         admin.require_auth();
         crate::admin::require_admin(env, admin)?;
         if delay < PARAM_TIMELOCK_MIN {
-            return Err(SwapTradeError::InvalidTimelockDuration);
+            return Err(PeerXError::InvalidTimelockDuration);
         }
         env.storage()
             .persistent()
@@ -95,7 +95,7 @@ impl GovernanceParams {
         admin: &Address,
         param: ParamKey,
         new_value: i128,
-    ) -> Result<u64, SwapTradeError> {
+    ) -> Result<u64, PeerXError> {
         admin.require_auth();
         crate::admin::require_admin(env, admin)?;
 
@@ -143,7 +143,7 @@ impl GovernanceParams {
         env: &Env,
         admin: &Address,
         update_id: u64,
-    ) -> Result<(), SwapTradeError> {
+    ) -> Result<(), PeerXError> {
         admin.require_auth();
         crate::admin::require_admin(env, admin)?;
 
@@ -151,15 +151,15 @@ impl GovernanceParams {
             .storage()
             .persistent()
             .get(&GovParamStorageKey::PendingUpdate(update_id))
-            .ok_or(SwapTradeError::KYCOverrideNotFound)?;
+            .ok_or(PeerXError::KYCOverrideNotFound)?;
 
         if update.executed {
-            return Err(SwapTradeError::KYCOverrideAlreadyExecuted);
+            return Err(PeerXError::KYCOverrideAlreadyExecuted);
         }
 
         let now = env.ledger().timestamp();
         if now < update.executable_at {
-            return Err(SwapTradeError::KYCTimelockNotElapsed);
+            return Err(PeerXError::KYCTimelockNotElapsed);
         }
 
         // Commit only the targeted parameter — isolated write (#156).
@@ -197,23 +197,23 @@ impl GovernanceParams {
     // ── Internal helpers ──────────────────────────────────────────────────────
 
     /// Validate that `value` is within the acceptable range for `param` (#156).
-    fn validate_param_value(param: &ParamKey, value: i128) -> Result<(), SwapTradeError> {
+    fn validate_param_value(param: &ParamKey, value: i128) -> Result<(), PeerXError> {
         match param {
             ParamKey::MaxSwapAmount => {
                 if value <= 0 || value > 1_000_000_000_000_000_000 {
-                    return Err(SwapTradeError::InvalidAmount);
+                    return Err(PeerXError::InvalidAmount);
                 }
             }
             ParamKey::FeeBps => {
                 // Fee must be 0–10 000 bps (0–100 %).
                 if value < 0 || value > 10_000 {
-                    return Err(SwapTradeError::InvalidAmount);
+                    return Err(PeerXError::InvalidAmount);
                 }
             }
             ParamKey::RateLimitWindow => {
                 // Window must be at least 60 s and at most 7 days.
                 if value < 60 || value > 604_800 {
-                    return Err(SwapTradeError::InvalidAmount);
+                    return Err(PeerXError::InvalidAmount);
                 }
             }
         }
@@ -258,7 +258,7 @@ mod tests {
             // Execution before delay must fail.
             assert_eq!(
                 GovernanceParams::execute_update(&env, &admin, id),
-                Err(SwapTradeError::KYCTimelockNotElapsed)
+                Err(PeerXError::KYCTimelockNotElapsed)
             );
 
             // Advance ledger past the default delay.
@@ -285,7 +285,7 @@ mod tests {
             GovernanceParams::execute_update(&env, &admin, id).unwrap();
             assert_eq!(
                 GovernanceParams::execute_update(&env, &admin, id),
-                Err(SwapTradeError::KYCOverrideAlreadyExecuted)
+                Err(PeerXError::KYCOverrideAlreadyExecuted)
             );
         });
     }
@@ -297,12 +297,12 @@ mod tests {
             // Fee > 10 000 bps is invalid.
             assert_eq!(
                 GovernanceParams::propose_update(&env, &admin, ParamKey::FeeBps, 20_000),
-                Err(SwapTradeError::InvalidAmount)
+                Err(PeerXError::InvalidAmount)
             );
             // Negative max swap amount is invalid.
             assert_eq!(
                 GovernanceParams::propose_update(&env, &admin, ParamKey::MaxSwapAmount, -1),
-                Err(SwapTradeError::InvalidAmount)
+                Err(PeerXError::InvalidAmount)
             );
         });
     }

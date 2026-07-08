@@ -1,5 +1,5 @@
 use soroban_sdk::{contracttype, Address, Env, Symbol, Vec, Map};
-use crate::errors::SwapTradeError;
+use crate::errors::PeerXError;
 
 /// Governance proposal types
 #[contracttype]

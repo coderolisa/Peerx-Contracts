@@ -32,7 +32,7 @@ mod tests {
     fn test_self_referral_prevention() {
         let (env, user, _, _) = setup_test_env();
 
-        assert_eq!(register_referral(&env, user.clone(), user.clone()), Err(SwapTradeError::SelfReferral));
+        assert_eq!(register_referral(&env, user.clone(), user.clone()), Err(PeerXError::SelfReferral));
     }
 
     #[test]
@@ -43,7 +43,7 @@ mod tests {
         assert!(register_referral(&env, referrer1.clone(), referred.clone()).is_ok());
 
         // Second referral should fail
-        assert_eq!(register_referral(&env, referrer2.clone(), referred.clone()), Err(SwapTradeError::AlreadyReferred));
+        assert_eq!(register_referral(&env, referrer2.clone(), referred.clone()), Err(PeerXError::AlreadyReferred));
     }
 
     #[test]
@@ -54,7 +54,7 @@ mod tests {
         assert!(register_referral(&env, user_a.clone(), user_b.clone()).is_ok());
 
         // Try circular referral: B refers A
-        assert_eq!(register_referral(&env, user_b.clone(), user_a.clone()), Err(SwapTradeError::CircularReferral));
+        assert_eq!(register_referral(&env, user_b.clone(), user_a.clone()), Err(PeerXError::CircularReferral));
     }
 
     #[test]
@@ -68,7 +68,7 @@ mod tests {
         assert!(register_referral(&env, user_b.clone(), user_c.clone()).is_ok());
 
         // Try C refers A (should fail - indirect circular)
-        assert_eq!(register_referral(&env, user_c.clone(), user_a.clone()), Err(SwapTradeError::CircularReferral));
+        assert_eq!(register_referral(&env, user_c.clone(), user_a.clone()), Err(PeerXError::CircularReferral));
     }
 
     #[test]

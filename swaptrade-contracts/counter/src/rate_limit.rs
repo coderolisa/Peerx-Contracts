@@ -451,14 +451,14 @@ impl SensitiveRateLimiter {
     pub fn check_and_record(
         env: &Env,
         user: &Address,
-    ) -> Result<(), crate::errors::SwapTradeError> {
+    ) -> Result<(), crate::errors::PeerXError> {
         let timestamp = env.ledger().timestamp();
         let window_start = (timestamp / SENSITIVE_ACTION_WINDOW) * SENSITIVE_ACTION_WINDOW;
         let key = (user.clone(), symbol_short!("sens"), window_start);
 
         let count: u32 = env.storage().persistent().get(&key).unwrap_or(0);
         if count >= SENSITIVE_ACTION_LIMIT {
-            return Err(crate::errors::SwapTradeError::RateLimitExceeded);
+            return Err(crate::errors::PeerXError::RateLimitExceeded);
         }
 
         env.storage().persistent().set(&key, &(count + 1));
@@ -510,7 +510,7 @@ mod sensitive_tests {
             }
             assert_eq!(
                 SensitiveRateLimiter::check_and_record(&env, &user),
-                Err(crate::errors::SwapTradeError::RateLimitExceeded)
+                Err(crate::errors::PeerXError::RateLimitExceeded)
             );
         });
     }
@@ -546,7 +546,7 @@ mod sensitive_tests {
             // One over the limit must fail.
             assert_eq!(
                 SensitiveRateLimiter::check_and_record(&env, &user),
-                Err(crate::errors::SwapTradeError::RateLimitExceeded)
+                Err(crate::errors::PeerXError::RateLimitExceeded)
             );
         });
     }

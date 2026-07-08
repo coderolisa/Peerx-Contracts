@@ -1,6 +1,6 @@
 use soroban_sdk::{contracttype, Address, Env, Map, Vec, Symbol, symbol_short};
 use crate::storage::DataKey;
-use crate::errors::SwapTradeError;
+use crate::errors::PeerXError;
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -53,24 +53,24 @@ const DEFAULT_TIER_3: TierConfig = TierConfig {
     indirect_commission_bps: 40, // 0.4%
 };
 
-pub fn register_referral(env: &Env, referrer: Address, referred: Address) -> Result<(), SwapTradeError> {
+pub fn register_referral(env: &Env, referrer: Address, referred: Address) -> Result<(), PeerXError> {
     // Authentication
     referred.require_auth();
 
     // Prevent self-referral
     if referrer == referred {
-        return Err(SwapTradeError::SelfReferral);
+        return Err(PeerXError::SelfReferral);
     }
 
     // Check if referred already has a referrer
     let referred_key = DataKey::Referrer(referred.clone());
     if env.storage().instance().has(&referred_key) {
-        return Err(SwapTradeError::AlreadyReferred);
+        return Err(PeerXError::AlreadyReferred);
     }
 
     // Check for circular referrals (prevent A->B->A)
     if is_circular_referral(env, &referrer, &referred) {
-        return Err(SwapTradeError::CircularReferral);
+        return Err(PeerXError::CircularReferral);
     }
 
     // Set the referrer for the referred user

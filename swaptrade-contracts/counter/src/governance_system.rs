@@ -1,5 +1,5 @@
 use soroban_sdk::{contracttype, Address, Env, Symbol, Vec, Map};
-use crate::errors::SwapTradeError;
+use crate::errors::PeerXError;
 use crate::governance_types::*;
 use crate::events::Events;
 
@@ -14,7 +14,7 @@ impl GovernanceSystem {
         proposal_type: ProposalType,
         description: Symbol,
         voting_period: u64,
-    ) -> Result<u64, SwapTradeError> {
+    ) -> Result<u64, PeerXError> {
         proposer.require_auth();
 
         let config = Self::get_config(env);
@@ -22,7 +22,7 @@ impl GovernanceSystem {
 
         // Validate voting period
         if voting_period < config.min_voting_period || voting_period > config.max_voting_period {
-            return Err(SwapTradeError::InvalidAmount);
+            return Err(PeerXError::InvalidAmount);
         }
 
         // Check proposal cooldown
@@ -32,13 +32,13 @@ impl GovernanceSystem {
             .unwrap_or(0u64);
 
         if current_time - last_proposal_time < config.proposal_cooldown {
-            return Err(SwapTradeError::RateLimitExceeded);
+            return Err(PeerXError::RateLimitExceeded);
         }
 
         // Get voting power snapshot
         let voting_power = Self::get_voting_power(env, proposer);
         if voting_power == 0 {
-            return Err(SwapTradeError::InvalidAmount); // No voting power
+            return Err(PeerXError::InvalidAmount); // No voting power
         }
 
         // Generate proposal ID
@@ -88,7 +88,7 @@ impl GovernanceSystem {
         voter: &Address,
         proposal_id: u64,
         vote_option: VoteOption,
-    ) -> Result<(), SwapTradeError> {
+    ) -> Result<(), PeerXError> {
         voter.require_auth();
 
         let mut proposal = Self::get_proposal(env, proposal_id)?;
@@ -96,11 +96,11 @@ impl GovernanceSystem {
 
         // Validate proposal state
         if proposal.status != ProposalStatus::Active {
-            return Err(SwapTradeError::InvalidAmount);
+            return Err(PeerXError::InvalidAmount);
         }
 
         if current_time < proposal.start_time || current_time > proposal.end_time {
-            return Err(SwapTradeError::InvalidAmount);
+            return Err(PeerXError::InvalidAmount);
         }
 
         // Check if voter already voted
@@ -111,13 +111,13 @@ impl GovernanceSystem {
             .unwrap_or_else(|| Map::new(env));
 
         if votes.contains_key(voter.clone()) {
-            return Err(SwapTradeError::InvalidAmount); // Already voted
+            return Err(PeerXError::InvalidAmount); // Already voted
         }
 
         // Get voting power
         let voting_power = Self::get_voting_power(env, voter);
         if voting_power == 0 {
-            return Err(SwapTradeError::InvalidAmount);
+            return Err(PeerXError::InvalidAmount);
         }
 
         // Record vote
@@ -155,7 +155,7 @@ impl GovernanceSystem {
         env: &Env,
         executor: &Address,
         proposal_id: u64,
-    ) -> Result<(), SwapTradeError> {
+    ) -> Result<(), PeerXError> {
         executor.require_auth();
 
         let mut proposal = Self::get_proposal(env, proposal_id)?;
@@ -164,16 +164,16 @@ impl GovernanceSystem {
 
         // Validate proposal can be executed
         if proposal.status != ProposalStatus::Active && proposal.status != ProposalStatus::Passed {
-            return Err(SwapTradeError::InvalidAmount);
+            return Err(PeerXError::InvalidAmount);
         }
 
         if proposal.executed {
-            return Err(SwapTradeError::InvalidAmount);
+            return Err(PeerXError::InvalidAmount);
         }
 
         // Check if voting period has ended
         if current_time < proposal.end_time {
-            return Err(SwapTradeError::InvalidAmount);
+            return Err(PeerXError::InvalidAmount);
         }
 
         // Finalize proposal status
@@ -181,19 +181,19 @@ impl GovernanceSystem {
 
         // Check if proposal passed
         if proposal.status != ProposalStatus::Passed {
-            return Err(SwapTradeError::InvalidAmount);
+            return Err(PeerXError::InvalidAmount);
         }
 
         // Check execution delay
         if let Some(execution_time) = proposal.execution_time {
             if current_time < execution_time {
-                return Err(SwapTradeError::InvalidAmount);
+                return Err(PeerXError::InvalidAmount);
             }
         } else {
             // Set execution time if not set
             proposal.execution_time = Some(current_time + config.execution_delay);
             env.storage().persistent().set(&GovernanceKey::Proposal(proposal_id), &proposal);
-            return Err(SwapTradeError::InvalidAmount); // Not ready for execution yet
+            return Err(PeerXError::InvalidAmount); // Not ready for execution yet
         }
 
         // Execute the proposal
@@ -218,7 +218,7 @@ impl GovernanceSystem {
         env: &Env,
         canceller: &Address,
         proposal_id: u64,
-    ) -> Result<(), SwapTradeError> {
+    ) -> Result<(), PeerXError> {
         canceller.require_auth();
 
         let mut proposal = Self::get_proposal(env, proposal_id)?;
@@ -226,12 +226,12 @@ impl GovernanceSystem {
 
         // Only proposer can cancel
         if proposal.proposer != canceller.clone() {
-            return Err(SwapTradeError::NotAdmin);
+            return Err(PeerXError::NotAdmin);
         }
 
         // Can only cancel active proposals before voting ends
         if proposal.status != ProposalStatus::Active || current_time > proposal.end_time {
-            return Err(SwapTradeError::InvalidAmount);
+            return Err(PeerXError::InvalidAmount);
         }
 
         proposal.status = ProposalStatus::Cancelled;
@@ -247,11 +247,11 @@ impl GovernanceSystem {
     }
 
     /// Get proposal details
-    pub fn get_proposal(env: &Env, proposal_id: u64) -> Result<Proposal, SwapTradeError> {
+    pub fn get_proposal(env: &Env, proposal_id: u64) -> Result<Proposal, PeerXError> {
         env.storage()
             .persistent()
             .get(&GovernanceKey::Proposal(proposal_id))
-            .ok_or(SwapTradeError::InvalidAmount)
+            .ok_or(PeerXError::InvalidAmount)
     }
 
     /// Get votes for a proposal
@@ -271,16 +271,16 @@ impl GovernanceSystem {
     }
 
     /// Set governance configuration (admin only)
-    pub fn set_config(env: &Env, admin: &Address, config: &GovernanceConfig) -> Result<(), SwapTradeError> {
+    pub fn set_config(env: &Env, admin: &Address, config: &GovernanceConfig) -> Result<(), PeerXError> {
         admin.require_auth();
         crate::admin::require_admin(env, admin)?;
 
         // Validate config
         if config.min_voting_period == 0 || config.max_voting_period < config.min_voting_period {
-            return Err(SwapTradeError::InvalidAmount);
+            return Err(PeerXError::InvalidAmount);
         }
         if config.quorum_threshold > 10000 || config.approval_threshold > 10000 {
-            return Err(SwapTradeError::InvalidAmount);
+            return Err(PeerXError::InvalidAmount);
         }
 
         env.storage().persistent().set(&GovernanceKey::Config, config);
@@ -315,7 +315,7 @@ impl GovernanceSystem {
         }
     }
 
-    fn execute_proposal_action(env: &Env, proposal: &Proposal) -> Result<(), SwapTradeError> {
+    fn execute_proposal_action(env: &Env, proposal: &Proposal) -> Result<(), PeerXError> {
         match &proposal.proposal_type {
             ProposalType::ParameterChange { param_key, new_value } => {
                 Self::execute_parameter_change(env, param_key, *new_value)
@@ -333,7 +333,7 @@ impl GovernanceSystem {
         }
     }
 
-    fn execute_parameter_change(env: &Env, param_key: &ParamKey, new_value: i128) -> Result<(), SwapTradeError> {
+    fn execute_parameter_change(env: &Env, param_key: &ParamKey, new_value: i128) -> Result<(), PeerXError> {
         match param_key {
             ParamKey::MaxSwapAmount => {
                 // Update max swap amount
@@ -383,12 +383,12 @@ impl GovernanceSystem {
         Ok(())
     }
 
-    fn execute_admin_upgrade(env: &Env, new_admin: &Address) -> Result<(), SwapTradeError> {
+    fn execute_admin_upgrade(env: &Env, new_admin: &Address) -> Result<(), PeerXError> {
         crate::admin::set_admin(env, new_admin);
         Ok(())
     }
 
-    fn execute_emergency_action(env: &Env, pause: bool) -> Result<(), SwapTradeError> {
+    fn execute_emergency_action(env: &Env, pause: bool) -> Result<(), PeerXError> {
         env.storage().instance().set(&Symbol::short("paused"), &pause);
         Ok(())
     }

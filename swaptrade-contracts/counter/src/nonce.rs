@@ -6,7 +6,7 @@
 
 use soroban_sdk::{contracttype, symbol_short, Address, Env};
 
-use crate::errors::SwapTradeError;
+use crate::errors::PeerXError;
 
 /// Storage key for a used nonce: (user, nonce_value).
 #[contracttype]
@@ -22,10 +22,10 @@ impl NonceGuard {
     ///
     /// Returns `Ok(())` the first time a nonce is seen.
     /// Returns `Err(RateLimitExceeded)` if the nonce was already used.
-    pub fn consume(env: &Env, user: &Address, nonce: u64) -> Result<(), SwapTradeError> {
+    pub fn consume(env: &Env, user: &Address, nonce: u64) -> Result<(), PeerXError> {
         let key = NonceKey::Used(user.clone(), nonce);
         if env.storage().persistent().has(&key) {
-            return Err(SwapTradeError::RateLimitExceeded);
+            return Err(PeerXError::RateLimitExceeded);
         }
         env.storage().persistent().set(&key, &true);
         env.events().publish(
@@ -73,7 +73,7 @@ mod tests {
             NonceGuard::consume(&env, &user, 42).unwrap();
             assert_eq!(
                 NonceGuard::consume(&env, &user, 42),
-                Err(SwapTradeError::RateLimitExceeded)
+                Err(PeerXError::RateLimitExceeded)
             );
         });
     }
@@ -109,7 +109,7 @@ mod tests {
             // Replayed submission fails.
             assert_eq!(
                 NonceGuard::consume(&env, &user, 1000),
-                Err(SwapTradeError::RateLimitExceeded)
+                Err(PeerXError::RateLimitExceeded)
             );
         });
     }

@@ -167,7 +167,7 @@ pub use rate_limit::{RateLimitStatus, RateLimiter};
 pub use tiers::UserTier;
 use trading::perform_swap;
 
-use crate::errors::{ContractError, SwapTradeError};
+use crate::errors::{ContractError, PeerXError};
 use crate::storage::{ADMIN_KEY, PAUSED_KEY};
 
 pub(crate) fn require_verified_user(env: &Env, user: &Address) -> Result<(), ContractError> {
@@ -179,21 +179,21 @@ fn require_authenticated_verified_user(env: &Env, user: &Address) -> Result<(), 
     require_verified_user(env, user)
 }
 
-pub fn pause_trading(env: Env, caller: Address) -> Result<bool, SwapTradeError> {
+pub fn pause_trading(env: Env, caller: Address) -> Result<bool, PeerXError> {
     caller.require_auth();
     crate::admin::require_admin(&env, &caller)?;
     env.storage().persistent().set(&PAUSED_KEY, &true);
     Ok(true)
 }
 
-pub fn resume_trading(env: Env, caller: Address) -> Result<bool, SwapTradeError> {
+pub fn resume_trading(env: Env, caller: Address) -> Result<bool, PeerXError> {
     caller.require_auth();
     crate::admin::require_admin(&env, &caller)?;
     env.storage().persistent().set(&PAUSED_KEY, &false);
     Ok(true)
 }
 
-pub fn set_admin(env: Env, caller: Address, new_admin: Address) -> Result<(), SwapTradeError> {
+pub fn set_admin(env: Env, caller: Address, new_admin: Address) -> Result<(), PeerXError> {
     caller.require_auth();
     crate::admin::require_admin(&env, &caller)?;
     env.storage().persistent().set(&ADMIN_KEY, &new_admin);
@@ -318,7 +318,7 @@ impl CounterContract {
     }
 
     /// Migrate contract data from V1 to V2
-    pub fn migrate(env: Env) -> Result<(), SwapTradeError> {
+    pub fn migrate(env: Env) -> Result<(), PeerXError> {
         migration::migrate_from_v1_to_v2(&env)
     }
 
@@ -621,7 +621,7 @@ impl CounterContract {
         env: Env,
         caller: Address,
         ttl_seconds: u64,
-    ) -> Result<(), SwapTradeError> {
+    ) -> Result<(), PeerXError> {
         caller.require_auth();
         crate::admin::require_admin(&env, &caller)?;
         env.storage().instance().set(&CACHE_TTL_KEY, &ttl_seconds);
@@ -636,7 +636,7 @@ impl CounterContract {
     }
 
     /// Clear all query caches (admin only).
-    pub fn clear_cache(env: Env, caller: Address) -> Result<(), SwapTradeError> {
+    pub fn clear_cache(env: Env, caller: Address) -> Result<(), PeerXError> {
         caller.require_auth();
         crate::admin::require_admin(&env, &caller)?;
         invalidate_query_cache(&env);

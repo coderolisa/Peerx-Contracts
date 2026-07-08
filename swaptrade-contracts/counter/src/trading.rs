@@ -1,7 +1,7 @@
 use soroban_sdk::{symbol_short, Address, Env};
 
 use crate::alerts::{check_portfolio_alerts, check_price_alerts};
-use crate::errors::SwapTradeError;
+use crate::errors::PeerXError;
 use crate::storage::PAUSED_KEY;
 use crate::tiers::UserTier;
 use crate::fee_progression::FeeProgression;
@@ -12,7 +12,7 @@ pub fn swap(
     amount: i128,
     fee_progression: &mut FeeProgression,
     user_tier: &UserTier,
-) -> Result<i128, SwapTradeError> {
+) -> Result<i128, PeerXError> {
     user.require_auth();
 
     let paused = env
@@ -22,7 +22,7 @@ pub fn swap(
         .unwrap_or(false);
 
     if paused {
-        return Err(SwapTradeError::TradingPaused);
+        return Err(PeerXError::TradingPaused);
     }
 
     // Calculate effective fee with achievement discounts

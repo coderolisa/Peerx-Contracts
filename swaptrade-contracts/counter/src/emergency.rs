@@ -1,7 +1,7 @@
 // src/emergency.rs
 extern crate alloc;
 use soroban_sdk::{contracttype, Address, Env, Map, Symbol, Vec, symbol_short};
-use crate::errors::SwapTradeError;
+use crate::errors::PeerXError;
 
 #[contracttype]
 pub struct StateSnapshot {
@@ -40,17 +40,17 @@ pub fn is_admin(env: &Env, addr: Address) -> bool {
     }
 }
 
-pub fn pause(env: &Env, admin: Address) -> Result<bool, SwapTradeError> {
+pub fn pause(env: &Env, admin: Address) -> Result<bool, PeerXError> {
     if !is_admin(env, admin) {
-        return Err(SwapTradeError::NotEmergencyAdmin);
+        return Err(PeerXError::NotEmergencyAdmin);
     }
     env.storage().instance().set(&EmergencyKey::Paused, &true);
     Ok(true)
 }
 
-pub fn unpause(env: &Env, admin: Address) -> Result<bool, SwapTradeError> {
+pub fn unpause(env: &Env, admin: Address) -> Result<bool, PeerXError> {
     if !is_admin(env, admin) {
-        return Err(SwapTradeError::NotEmergencyAdmin);
+        return Err(PeerXError::NotEmergencyAdmin);
     }
     env.storage().instance().set(&EmergencyKey::Paused, &false);
     Ok(true)
@@ -60,9 +60,9 @@ pub fn is_paused(env: &Env) -> bool {
     env.storage().instance().get(&EmergencyKey::Paused).unwrap_or(false)
 }
 
-pub fn freeze_user(env: &Env, admin: Address, user: Address) -> Result<bool, SwapTradeError> {
+pub fn freeze_user(env: &Env, admin: Address, user: Address) -> Result<bool, PeerXError> {
     if !is_admin(env, admin) {
-        return Err(SwapTradeError::NotEmergencyAdmin);
+        return Err(PeerXError::NotEmergencyAdmin);
     }
 
     let mut frozen: Vec<Address> =
@@ -75,9 +75,9 @@ pub fn freeze_user(env: &Env, admin: Address, user: Address) -> Result<bool, Swa
     Ok(true)
 }
 
-pub fn unfreeze_user(env: &Env, admin: Address, user: Address) -> Result<bool, SwapTradeError> {
+pub fn unfreeze_user(env: &Env, admin: Address, user: Address) -> Result<bool, PeerXError> {
     if !is_admin(env, admin) {
-        return Err(SwapTradeError::NotEmergencyAdmin);
+        return Err(PeerXError::NotEmergencyAdmin);
     }
 
     let mut frozen: Vec<Address> =
@@ -103,9 +103,9 @@ pub fn is_frozen(env: &Env, user: Address) -> bool {
 }
 
 // Circuit breaker settings
-pub fn set_threshold_bps(env: &Env, admin: Address, bps: u32) -> Result<(), SwapTradeError> {
+pub fn set_threshold_bps(env: &Env, admin: Address, bps: u32) -> Result<(), PeerXError> {
     if !is_admin(env, admin) {
-        return Err(SwapTradeError::NotEmergencyAdmin);
+        return Err(PeerXError::NotEmergencyAdmin);
     }
     env.storage().instance().set(&EmergencyKey::ThresholdBps, &bps);
     Ok(())
