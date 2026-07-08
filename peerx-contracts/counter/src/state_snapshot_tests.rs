@@ -3,12 +3,13 @@
 
 #[cfg(test)]
 mod tests {
+    use soroban_sdk::testutils::{Address as _, Ledger};
+    use soroban_sdk::{Address, Env, symbol_short};
+
+    use crate::CounterContract;
     use crate::state_snapshot::{
         AtomicOperation, ReadConsistencyGuard, StateConsistencyChecker, StateSnapshotManager,
     };
-    use crate::CounterContract;
-    use soroban_sdk::testutils::{Address as _, Ledger};
-    use soroban_sdk::{symbol_short, Address, Env};
 
     #[test]
     fn test_snapshot_creation() {
