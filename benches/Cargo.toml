@@ -8,7 +8,7 @@ name = "benchmark-runner"
 path = "main.rs"
 
 [dev-dependencies]
-peerx-contracts = { path = "../peerx-contracts/counter" }
+counter = { path = "../peerx-contracts/counter" }
 soroban-sdk = "22.0.0"
 
 [dependencies]
