@@ -1,89 +1,42 @@
+use crate::error::{CliError, Result};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use crate::error::{CliError, Result};
 
 /// Configuration for PeerX CLI
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
-    /// Network configuration
-    pub network: NetworkConfig,
-    
-    /// Contract configuration
-    pub contract: ContractConfig,
-    
-    /// Health check configuration
-    pub health: HealthConfig,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct NetworkConfig {
-    /// Network name (testnet, mainnet, local)
-    pub name: String,
-    
-    /// RPC endpoint URL
+    /// Soroban RPC endpoint URL
     pub rpc_url: String,
     
-    /// Horizon API URL
-    pub horizon_url: String,
-    
-    /// Network passphrase
-    pub passphrase: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ContractConfig {
-    /// Contract ID
+    /// Contract ID for the PeerX contract
     pub contract_id: String,
     
-    /// Admin address
+    /// Admin address for health checks
     pub admin_address: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct HealthConfig {
+    
+    /// Network (testnet, mainnet, local)
+    pub network: String,
+    
+    /// Oracle endpoint URL (if external oracle)
+    pub oracle_url: Option<String>,
+    
     /// Timeout for health checks in seconds
-    #[serde(default = "default_timeout")]
     pub timeout_seconds: u64,
     
-    /// Oracle freshness threshold in seconds
-    #[serde(default = "default_oracle_freshness")]
-    pub oracle_freshness_threshold_seconds: u64,
-    
-    /// Number of retries for network operations
-    #[serde(default = "default_retries")]
-    pub max_retries: u32,
-}
-
-fn default_timeout() -> u64 {
-    30
-}
-
-fn default_oracle_freshness() -> u64 {
-    300 // 5 minutes
-}
-
-fn default_retries() -> u32 {
-    3
+    /// Maximum acceptable oracle staleness in seconds
+    pub oracle_max_staleness_seconds: u64,
 }
 
 impl Default for Config {
     fn default() -> Self {
         Self {
-            network: NetworkConfig {
-                name: "testnet".to_string(),
-                rpc_url: "https://soroban-testnet.stellar.org".to_string(),
-                horizon_url: "https://horizon-testnet.stellar.org".to_string(),
-                passphrase: "Test SDF Network ; September 2015".to_string(),
-            },
-            contract: ContractConfig {
-                contract_id: String::new(),
-                admin_address: None,
-            },
-            health: HealthConfig {
-                timeout_seconds: default_timeout(),
-                oracle_freshness_threshold_seconds: default_oracle_freshness(),
-                max_retries: default_retries(),
-            },
+            rpc_url: "https://soroban-testnet.stellar.org".to_string(),
+            contract_id: String::new(),
+            admin_address: None,
+            network: "testnet".to_string(),
+            oracle_url: None,
+            timeout_seconds: 30,
+            oracle_max_staleness_seconds: 300, // 5 minutes
         }
     }
 }
@@ -94,55 +47,105 @@ impl Config {
         let mut config = Self::default();
         
         // Override with environment variables
-        if let Ok(network) = std::env::var("PEERX_NETWORK") {
-            config.network.name = network;
-        }
-        
         if let Ok(rpc_url) = std::env::var("PEERX_RPC_URL") {
-            config.network.rpc_url = rpc_url;
+            config.rpc_url = rpc_url;
         }
         
         if let Ok(contract_id) = std::env::var("PEERX_CONTRACT_ID") {
-            config.contract.contract_id = contract_id;
+            config.contract_id = contract_id;
         }
         
-        if let Ok(admin) = std::env::var("PEERX_ADMIN_ADDRESS") {
-            config.contract.admin_address = Some(admin);
+        if let Ok(admin_address) = std::env::var("PEERX_ADMIN_ADDRESS") {
+            config.admin_address = Some(admin_address);
         }
         
-        // Try to load from config file
-        if let Some(config_path) = Self::find_config_file() {
-            if let Ok(contents) = std::fs::read_to_string(&config_path) {
-                if let Ok(file_config) = serde_json::from_str::<Config>(&contents) {
-                    config = file_config;
-                }
-            }
+        if let Ok(network) = std::env::var("PEERX_NETWORK") {
+            config.network = network;
+        }
+        
+        if let Ok(oracle_url) = std::env::var("PEERX_ORACLE_URL") {
+            config.oracle_url = Some(oracle_url);
+        }
+        
+        if let Ok(timeout) = std::env::var("PEERX_TIMEOUT_SECONDS") {
+            config.timeout_seconds = timeout.parse().unwrap_or(30);
+        }
+        
+        if let Ok(staleness) = std::env::var("PEERX_ORACLE_MAX_STALENESS_SECONDS") {
+            config.oracle_max_staleness_seconds = staleness.parse().unwrap_or(300);
+        }
+        
+        // Try to load from config file if it exists
+        if let Ok(file_config) = Self::load_from_file() {
+            config = config.merge(file_config);
         }
         
         Ok(config)
     }
     
-    /// Find config file in standard locations
-    fn find_config_file() -> Option<PathBuf> {
-        let candidates = vec![
-            PathBuf::from("peerx-cli.json"),
-            PathBuf::from(".peerx-cli.json"),
-            dirs::home_dir()?.join(".config/peerx/config.json"),
-        ];
+    /// Load configuration from file
+    fn load_from_file() -> Result<Self> {
+        let config_path = Self::config_path()?;
         
-        candidates.into_iter().find(|p| p.exists())
+        if !config_path.exists() {
+            return Err(CliError::Config("Config file not found".to_string()));
+        }
+        
+        let content = std::fs::read_to_string(&config_path)?;
+        let config: Config = serde_json::from_str(&content)?;
+        
+        Ok(config)
     }
     
-    /// Validate configuration
+    /// Get the configuration file path
+    fn config_path() -> Result<PathBuf> {
+        let home = std::env::var("HOME")
+            .map_err(|_| CliError::Config("HOME environment variable not set".to_string()))?;
+        
+        Ok(PathBuf::from(home).join(".peerx").join("config.json"))
+    }
+    
+    /// Merge with another config, preferring non-empty values from other
+    fn merge(mut self, other: Config) -> Self {
+        if !other.rpc_url.is_empty() {
+            self.rpc_url = other.rpc_url;
+        }
+        if !other.contract_id.is_empty() {
+            self.contract_id = other.contract_id;
+        }
+        if other.admin_address.is_some() {
+            self.admin_address = other.admin_address;
+        }
+        if !other.network.is_empty() {
+            self.network = other.network;
+        }
+        if other.oracle_url.is_some() {
+            self.oracle_url = other.oracle_url;
+        }
+        self.timeout_seconds = other.timeout_seconds;
+        self.oracle_max_staleness_seconds = other.oracle_max_staleness_seconds;
+        
+        self
+    }
+    
+    /// Validate the configuration
     pub fn validate(&self) -> Result<()> {
-        if self.contract.contract_id.is_empty() {
+        if self.contract_id.is_empty() {
             return Err(CliError::Config(
-                "Contract ID is required. Set PEERX_CONTRACT_ID environment variable or configure in config file.".to_string()
+                "Contract ID is required. Set PEERX_CONTRACT_ID or create config file".to_string()
             ));
         }
         
-        if self.network.rpc_url.is_empty() {
-            return Err(CliError::Config("RPC URL is required".to_string()));
+        if self.rpc_url.is_empty() {
+            return Err(CliError::Config("RPC URL cannot be empty".to_string()));
+        }
+        
+        // Validate URL format
+        if !self.rpc_url.starts_with("http://") && !self.rpc_url.starts_with("https://") {
+            return Err(CliError::InvalidUrl(format!(
+                "Invalid RPC URL: {}",
+                self.rpc_url
+            )));
         }
         
         Ok(())

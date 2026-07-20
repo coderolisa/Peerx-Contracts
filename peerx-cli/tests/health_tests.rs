@@ -1,186 +1,106 @@
-use peerx_cli::health::types::{HealthReport, Check, CheckStatus, HealthStatus};
+use peerx_cli::config::Config;
+use peerx_cli::health::{HealthChecker, HealthStatus};
 
-#[test]
-fn test_health_report_creation() {
-    let report = HealthReport::new();
-    assert_eq!(report.status, HealthStatus::Healthy);
-    assert_eq!(report.checks.len(), 0);
-    assert_eq!(report.summary.total, 0);
-}
-
-#[test]
-fn test_health_status_exit_codes() {
+#[tokio::test]
+async fn test_health_status_exit_codes() {
     assert_eq!(HealthStatus::Healthy.to_exit_code(), 0);
-    assert_eq!(HealthStatus::Degraded.to_exit_code(), 1);
-    assert_eq!(HealthStatus::Unhealthy.to_exit_code(), 2);
+    assert_eq!(HealthStatus::Warning.to_exit_code(), 1);
+    assert_eq!(HealthStatus::Critical.to_exit_code(), 2);
+}
+
+#[tokio::test]
+async fn test_health_status_worst() {
+    assert_eq!(
+        HealthStatus::Healthy.worst(&HealthStatus::Healthy),
+        HealthStatus::Healthy
+    );
+    assert_eq!(
+        HealthStatus::Healthy.worst(&HealthStatus::Warning),
+        HealthStatus::Warning
+    );
+    assert_eq!(
+        HealthStatus::Healthy.worst(&HealthStatus::Critical),
+        HealthStatus::Critical
+    );
+    assert_eq!(
+        HealthStatus::Warning.worst(&HealthStatus::Critical),
+        HealthStatus::Critical
+    );
 }
 
 #[test]
-fn test_check_status_methods() {
-    assert!(CheckStatus::Pass.is_healthy());
-    assert!(!CheckStatus::Warn.is_healthy());
-    assert!(!CheckStatus::Fail.is_healthy());
-    assert!(!CheckStatus::Error.is_healthy());
+fn test_config_validation() {
+    let mut config = Config::default();
     
-    assert!(!CheckStatus::Pass.is_critical());
-    assert!(!CheckStatus::Warn.is_critical());
-    assert!(CheckStatus::Fail.is_critical());
-    assert!(CheckStatus::Error.is_critical());
+    // Empty contract ID should fail
+    assert!(config.validate().is_err());
+    
+    // Valid config should pass
+    config.contract_id = "CDTEST123".to_string();
+    config.rpc_url = "https://test.example.com".to_string();
+    assert!(config.validate().is_ok());
+    
+    // Invalid URL should fail
+    config.rpc_url = "not-a-url".to_string();
+    assert!(config.validate().is_err());
 }
 
 #[test]
-fn test_report_finalize_healthy() {
-    let mut report = HealthReport::new();
+fn test_config_merge() {
+    let mut base = Config {
+        rpc_url: "https://base.com".to_string(),
+        contract_id: "BASE_CONTRACT".to_string(),
+        admin_address: None,
+        network: "testnet".to_string(),
+        oracle_url: None,
+        timeout_seconds: 30,
+        oracle_max_staleness_seconds: 300,
+    };
     
-    report.add_check(Check {
-        name: "test1".to_string(),
-        status: CheckStatus::Pass,
-        message: "OK".to_string(),
-        duration_ms: 10,
-        details: None,
-    });
+    let override_config = Config {
+        rpc_url: "https://override.com".to_string(),
+        contract_id: "OVERRIDE_CONTRACT".to_string(),
+        admin_address: Some("ADMIN_ADDR".to_string()),
+        network: "mainnet".to_string(),
+        oracle_url: Some("https://oracle.com".to_string()),
+        timeout_seconds: 60,
+        oracle_max_staleness_seconds: 600,
+    };
     
-    report.add_check(Check {
-        name: "test2".to_string(),
-        status: CheckStatus::Pass,
-        message: "OK".to_string(),
-        duration_ms: 20,
-        details: None,
-    });
+    let merged = base.merge(override_config);
     
-    report.finalize();
-    
-    assert_eq!(report.status, HealthStatus::Healthy);
-    assert_eq!(report.summary.passed, 2);
-    assert_eq!(report.summary.total, 2);
-    assert_eq!(report.total_duration_ms, 30);
+    assert_eq!(merged.rpc_url, "https://override.com");
+    assert_eq!(merged.contract_id, "OVERRIDE_CONTRACT");
+    assert_eq!(merged.admin_address, Some("ADMIN_ADDR".to_string()));
+    assert_eq!(merged.network, "mainnet");
+    assert_eq!(merged.timeout_seconds, 60);
 }
 
-#[test]
-fn test_report_finalize_degraded() {
-    let mut report = HealthReport::new();
+#[cfg(test)]
+mod integration_tests {
+    use super::*;
     
-    report.add_check(Check {
-        name: "test1".to_string(),
-        status: CheckStatus::Pass,
-        message: "OK".to_string(),
-        duration_ms: 10,
-        details: None,
-    });
+    // These tests would require a mock Soroban RPC server
+    // For now, they're placeholders for future implementation
     
-    report.add_check(Check {
-        name: "test2".to_string(),
-        status: CheckStatus::Warn,
-        message: "Warning".to_string(),
-        duration_ms: 20,
-        details: None,
-    });
-    
-    report.finalize();
-    
-    assert_eq!(report.status, HealthStatus::Degraded);
-    assert_eq!(report.summary.passed, 1);
-    assert_eq!(report.summary.warnings, 1);
-    assert_eq!(report.summary.total, 2);
-}
-
-#[test]
-fn test_report_finalize_unhealthy() {
-    let mut report = HealthReport::new();
-    
-    report.add_check(Check {
-        name: "test1".to_string(),
-        status: CheckStatus::Pass,
-        message: "OK".to_string(),
-        duration_ms: 10,
-        details: None,
-    });
-    
-    report.add_check(Check {
-        name: "test2".to_string(),
-        status: CheckStatus::Fail,
-        message: "Failed".to_string(),
-        duration_ms: 20,
-        details: None,
-    });
-    
-    report.finalize();
-    
-    assert_eq!(report.status, HealthStatus::Unhealthy);
-    assert_eq!(report.summary.passed, 1);
-    assert_eq!(report.summary.failed, 1);
-    assert_eq!(report.summary.total, 2);
-}
-
-#[test]
-fn test_report_with_errors() {
-    let mut report = HealthReport::new();
-    
-    report.add_check(Check {
-        name: "test1".to_string(),
-        status: CheckStatus::Error,
-        message: "Error occurred".to_string(),
-        duration_ms: 10,
-        details: None,
-    });
-    
-    report.finalize();
-    
-    assert_eq!(report.status, HealthStatus::Unhealthy);
-    assert_eq!(report.summary.errors, 1);
-    assert_eq!(report.summary.total, 1);
-}
-
-#[test]
-fn test_summary_counts() {
-    let mut report = HealthReport::new();
-    
-    report.add_check(Check {
-        name: "pass1".to_string(),
-        status: CheckStatus::Pass,
-        message: "OK".to_string(),
-        duration_ms: 10,
-        details: None,
-    });
-    
-    report.add_check(Check {
-        name: "pass2".to_string(),
-        status: CheckStatus::Pass,
-        message: "OK".to_string(),
-        duration_ms: 10,
-        details: None,
-    });
-    
-    report.add_check(Check {
-        name: "warn1".to_string(),
-        status: CheckStatus::Warn,
-        message: "Warning".to_string(),
-        duration_ms: 10,
-        details: None,
-    });
-    
-    report.add_check(Check {
-        name: "fail1".to_string(),
-        status: CheckStatus::Fail,
-        message: "Failed".to_string(),
-        duration_ms: 10,
-        details: None,
-    });
-    
-    report.add_check(Check {
-        name: "error1".to_string(),
-        status: CheckStatus::Error,
-        message: "Error".to_string(),
-        duration_ms: 10,
-        details: None,
-    });
-    
-    report.finalize();
-    
-    assert_eq!(report.summary.total, 5);
-    assert_eq!(report.summary.passed, 2);
-    assert_eq!(report.summary.warnings, 1);
-    assert_eq!(report.summary.failed, 1);
-    assert_eq!(report.summary.errors, 1);
-    assert_eq!(report.status, HealthStatus::Unhealthy);
+    #[tokio::test]
+    #[ignore] // Requires mock server
+    async fn test_health_checker_all_checks() {
+        let config = Config {
+            rpc_url: "http://localhost:8000".to_string(),
+            contract_id: "TEST_CONTRACT".to_string(),
+            admin_address: Some("TEST_ADMIN".to_string()),
+            network: "local".to_string(),
+            oracle_url: None,
+            timeout_seconds: 5,
+            oracle_max_staleness_seconds: 300,
+        };
+        
+        let checker = HealthChecker::new(config);
+        let report = checker.run_all_checks().await;
+        
+        // With a proper mock, we would assert:
+        // assert!(report.is_ok());
+        // assert_eq!(report.unwrap().checks.len(), 5);
+    }
 }
